@@ -242,7 +242,7 @@ fn next_ch(text: &mut Chars) -> char{
 }
 
 fn parse_error(message: String) {
-    //println!("{}", message);
+    println!("{}", message);
     println!("NG");
     std::process::exit(1);
 }
