@@ -26,7 +26,7 @@ pub struct KeyWd<'a> {
     kind: Kind
 }
 
-const KEY_WD_TBL: [KeyWd; 25] = [
+pub const KEY_WD_TBL: [KeyWd; 25] = [
     KeyWd{val: "(", kind: Kind::Lparen},
     KeyWd{val: ")", kind: Kind::Rparen},
     KeyWd{val: "{", kind: Kind::Lbrace},
