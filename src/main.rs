@@ -1,6 +1,7 @@
 use inkwell::context::Context;
 use std::error::Error;
 
+#[allow(bare_trait_objects)]
 fn main() -> Result<(), Box<Error>> {
     let context = Context::create();
     let module = context.create_module("main");
