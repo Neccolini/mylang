@@ -6,18 +6,19 @@ pub enum Kind {
     Less, LessEq, Greater, GreaterEq, SngQ, DblQ, Assign, Semicolon,
     If, Else, Print, Ident, IntNum,
     String, Letter, Digit, Nulkind, EofTkn, Others, Endlist,
-    Lbrace, Rbrace
+    Lbrace, Rbrace, Char
 }
 
 #[derive(Debug)]
 pub struct Token{
     text: String,
+    chr: char,
     kind: Kind,
     val: i32,
 }
 impl Token {
     pub fn new() -> Token {
-        Token{text: "".to_string(), kind: Kind::Others, val: 0}
+        Token{text: "".to_string(), chr:' ', kind: Kind::Others, val: 0}
     }
 }
 pub struct KeyWd<'a> {
@@ -87,7 +88,7 @@ pub fn init_ch_type() -> [Ch;256]{
 }
 
 
-
+#[allow(while_true)]
 pub fn tokenize(text: &mut Chars) -> Vec<Token> {
     let mut tkn_res = vec![];
     let ch_list:[Ch;256] = init_ch_type();
@@ -108,7 +109,7 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token {
     }
 
     if ch == '\0' {
-        return Token { text: "".to_string(), kind: Kind::Endlist, val: 0 }
+        return Token { text: "".to_string(), chr:' ', kind: Kind::Endlist, val: 0 }
     }
 
     match ch_list[ch as usize] {
@@ -141,10 +142,20 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token {
                 // todo 文字数制限
             }
             if ch_list[ch as usize] == Ch::Letter { parse_error(); }
-            token.kind = Kind::Digit;
+            token.kind = Kind::IntNum;
             token.val = s.parse().unwrap();
         },
-        
+        Ch::SngQ => {
+            let c: char = next_ch(text);
+            if next_ch(text) != '\'' { parse_error(); }
+            token.kind = Kind::Char;
+            token.chr = c;
+        },
+
+        Ch::DblQ => {
+            
+        }
+
         _ => {
 
         }
