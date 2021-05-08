@@ -1,6 +1,6 @@
 use std::str::Chars;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Kind {
     Lparen, Rparen, Plus, Minus, Multi, Divi, Equal, NotEq,
     Less, LessEq, Greater, GreaterEq, SngQ, DblQ, Assign, Semicolon,
@@ -10,14 +10,14 @@ pub enum Kind {
 }
 
 #[derive(Debug)]
-pub struct Token<'a> {
-    text: &'a str,
+pub struct Token{
+    text: String,
     kind: Kind,
     val: i32,
 }
-impl<'a> Token<'a> {
-    pub fn new() -> Token<'a> {
-        Token{text: "", kind: Kind::Others, val: 0}
+impl Token {
+    pub fn new() -> Token {
+        Token{text: "".to_string(), kind: Kind::Others, val: 0}
     }
 }
 pub struct KeyWd<'a> {
@@ -25,7 +25,7 @@ pub struct KeyWd<'a> {
     kind: Kind
 }
 
-const KeyWdTbl: [KeyWd; 20] = [
+const KEY_WD_TBL: [KeyWd; 20] = [
     KeyWd{val: "(", kind: Kind::Lparen},
     KeyWd{val: ")", kind: Kind::Rparen},
     KeyWd{val: "{", kind: Kind::Lbrace},
@@ -49,7 +49,7 @@ const KeyWdTbl: [KeyWd; 20] = [
     ]; // todo
 
 
-#[derive(Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone, )]
 pub enum Ch {
     Others, Digit, Letter, Assign, Lparen, Rparen, Less, Great,
     Plus, Minus, Multi, Divi, SngQ, DblQ, Semicolon, Lbrace, Rbrace,
@@ -88,7 +88,7 @@ pub fn init_ch_type() -> [Ch;256]{
 
 
 
-pub fn tokenize(text: &mut Chars) -> Vec<Token<'static> > {
+pub fn tokenize(text: &mut Chars) -> Vec<Token> {
     let mut tkn_res = vec![];
     let ch_list:[Ch;256] = init_ch_type();
     while true {
@@ -100,21 +100,51 @@ pub fn tokenize(text: &mut Chars) -> Vec<Token<'static> > {
     tkn_res
 }
 
-fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token<'static>{
+fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token {
     let mut ch = ' ';
-    let token = Token::new();
+    let mut token = Token::new();
     while ch == ' ' || ch == '\n' {
         ch = next_ch(text);
     }
 
     if ch == '\0' {
-        return Token { text: "", kind: Kind::Endlist, val: 0 }
+        return Token { text: "".to_string(), kind: Kind::Endlist, val: 0 }
     }
 
     match ch_list[ch as usize] {
         Ch::Letter => {
-            
+            let mut s = "".to_string();
+            while ch_list[ch as usize] == Ch::Letter || ch_list[ch as usize] == Ch::Digit {
+                s = s + &ch.to_string();
+                ch = next_ch(text);
+                // todo æ–‡å­—æ•°åˆ¶é™
+            }
+            for word in KEY_WD_TBL.iter() {
+                if &*s == word.val {
+                    token.kind = word.kind;
+                    token.text = s.clone();
+                    break;
+                }
+            }
+            if &token.text == "" {
+                token.kind = Kind::Ident;
+                token.text = s.clone();
+            }
+
         },
+
+        Ch::Digit => {
+            let mut s:String = "".to_string();
+            while ch_list[ch as usize] == Ch::Digit {
+                s = s + &ch.to_string();
+                ch = next_ch(text);
+                // todo æ–‡å­—æ•°åˆ¶é™
+            }
+            if ch_list[ch as usize] == Ch::Letter { parse_error(); }
+            token.kind = Kind::Digit;
+            token.val = s.parse().unwrap();
+        },
+        
         _ => {
 
         }
@@ -160,10 +190,11 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() == 1 {
+        println!("identify the filename to parse");
         std::process::exit(1);
     }
 
-    // todo(“ü—Íƒtƒ@ƒCƒ‹‚ª‘å‚«‚¢‚ÆŽ¸”s‚·‚é‰Â”\«‚ª‚ ‚é)
+    // todo(å…¥åŠ›ãƒ•ã‚¡ã‚¤ãƒ«ãŒå¤§ãã„ã¨å¤±æ•—ã™ã‚‹å¯èƒ½æ€§ãŒã‚ã‚‹)
     let text = match fs::read_to_string(&args[1]) {
         Ok(n) => n,
         Err(err) => {
@@ -171,7 +202,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    
+
     let token_list = tokenize(&mut text.chars());
 
     println!("text\tkind\tval");
