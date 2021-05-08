@@ -6,7 +6,7 @@ pub enum Kind {
     Less, LessEq, Greater, GreaterEq, SngQ, DblQ, Assign, Semicolon,
     If, Else, Print, Ident, IntNum,
     String, Letter, Digit, Nulkind, EofTkn, Others, Endlist,
-    Lbrace, Rbrace, Char
+    Lbrace, Rbrace, Char, Nyaan, Addasgn, Mnuasgn, Multiasgn, Divasgn
 }
 
 #[derive(Debug)]
@@ -26,7 +26,7 @@ pub struct KeyWd<'a> {
     kind: Kind
 }
 
-const KEY_WD_TBL: [KeyWd; 20] = [
+const KEY_WD_TBL: [KeyWd; 25] = [
     KeyWd{val: "(", kind: Kind::Lparen},
     KeyWd{val: ")", kind: Kind::Rparen},
     KeyWd{val: "{", kind: Kind::Lbrace},
@@ -42,19 +42,24 @@ const KEY_WD_TBL: [KeyWd; 20] = [
     KeyWd{val: ">", kind: Kind::Greater},
     KeyWd{val: ">=", kind: Kind::GreaterEq},
     KeyWd{val: "=", kind: Kind::Assign},
+    KeyWd{val: "+=", kind: Kind::Addasgn},
+    KeyWd{val: "-=", kind: Kind::Mnuasgn},
+    KeyWd{val: "*=", kind: Kind::Multiasgn},
+    KeyWd{val: "/=", kind: Kind::Divasgn},
     KeyWd{val: ";", kind: Kind::Semicolon},
     KeyWd{val: "", kind: Kind::Endlist},
     KeyWd{val: "if", kind:Kind::If},
     KeyWd{val: "else", kind: Kind::Else},
     KeyWd{val:  "print", kind: Kind::Print},
+    KeyWd{val: "nyaan", kind: Kind::Nyaan},
     ]; // todo
 
 
 #[derive(PartialEq, Debug, Copy, Clone, )]
 pub enum Ch {
-    Others, Digit, Letter, Assign, Lparen, Rparen, Less, Great,
+    Others, Digit, Letter, Assign, Lparen, Rparen, Less, Greater,
     Plus, Minus, Multi, Divi, SngQ, DblQ, Semicolon, Lbrace, Rbrace,
-    EOF,
+    EOF,Exclam,
 }
 
 pub fn init_ch_type() -> [Ch;256]{
@@ -75,7 +80,7 @@ pub fn init_ch_type() -> [Ch;256]{
     ch_list['{' as usize] = Ch::Lbrace;
     ch_list['}' as usize] = Ch::Rbrace;
     ch_list['<' as usize] = Ch::Less;
-    ch_list['>' as usize] = Ch::Great;
+    ch_list['>' as usize] = Ch::Greater;
     ch_list['+' as usize] = Ch::Plus;
     ch_list['-' as usize] = Ch::Minus;
     ch_list['*' as usize] = Ch::Multi;
@@ -83,6 +88,7 @@ pub fn init_ch_type() -> [Ch;256]{
     ch_list['\'' as usize] = Ch::SngQ;
     ch_list['"' as usize] = Ch::DblQ;
     ch_list[';' as usize] = Ch::Semicolon;
+    ch_list['!' as usize] = Ch::Exclam;
 
     ch_list
 }
@@ -92,8 +98,9 @@ pub fn init_ch_type() -> [Ch;256]{
 pub fn tokenize(text: &mut Chars) -> Vec<Token> {
     let mut tkn_res = vec![];
     let ch_list:[Ch;256] = init_ch_type();
+    let mut prev_ch = ' ';
     while true {
-        tkn_res.push(next_tkn(text, &ch_list));
+        tkn_res.push(next_tkn(text, &ch_list, &mut prev_ch));
         if tkn_res.last().unwrap().kind == Kind::Endlist {
             break;
         }
@@ -101,9 +108,9 @@ pub fn tokenize(text: &mut Chars) -> Vec<Token> {
     tkn_res
 }
 
-fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token {
-    let mut ch = ' ';
-    let mut token = Token::new();
+fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
+    let mut ch:char = *prev_ch;
+    let mut token:Token = Token::new();
     while ch == ' ' || ch == '\n' {
         ch = next_ch(text);
     }
@@ -111,10 +118,9 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token {
     if ch == '\0' {
         return Token { text: "".to_string(), chr:' ', kind: Kind::Endlist, val: 0 }
     }
-
     match ch_list[ch as usize] {
         Ch::Letter => {
-            let mut s = "".to_string();
+            let mut s: String = "".to_string();
             while ch_list[ch as usize] == Ch::Letter || ch_list[ch as usize] == Ch::Digit {
                 s = s + &ch.to_string();
                 ch = next_ch(text);
@@ -129,9 +135,9 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token {
             }
             if &token.text == "" {
                 token.kind = Kind::Ident;
-                token.text = s.clone();
+                token.text = s;
             }
-
+            *prev_ch = ch;
         },
 
         Ch::Digit => {
@@ -141,23 +147,67 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256]) -> Token {
                 ch = next_ch(text);
                 // todo 文字数制限
             }
-            if ch_list[ch as usize] == Ch::Letter { parse_error(); }
+            if ch_list[ch as usize] == Ch::Letter { parse_error(ch.to_string()); }
             token.kind = Kind::IntNum;
             token.val = s.parse().unwrap();
+            *prev_ch = ch;
         },
         Ch::SngQ => {
             let c: char = next_ch(text);
-            if next_ch(text) != '\'' { parse_error(); }
+            if next_ch(text) != '\'' { parse_error(ch.to_string()); }
             token.kind = Kind::Char;
             token.chr = c;
         },
 
         Ch::DblQ => {
-            
+            let mut s: String = "".to_string();
+            ch = next_ch(text);
+            while ch != '"' {
+                s = s + &ch.to_string();
+                ch = next_ch(text);
+                if ch == '\0' { parse_error(ch.to_string()); }
+            }
+            token.kind = Kind::String;
+            token.text = s;
+            *prev_ch = next_ch(text);
+        },
+
+        // = + ! < > 
+        Ch::Assign | Ch::Plus | Ch::Exclam | Ch::Less | Ch::Greater =>  {
+            let nch = next_ch(text);
+            if ch == '=' && nch == '=' {
+                token.kind = Kind::Equal;
+            }
+            else if ch == '!' && nch == '=' {
+                token.kind = Kind::NotEq;
+            }
+            else if ch == '+' && nch == '=' {
+                token.kind = Kind::Addasgn;
+            }
+            else if ch == '-' && nch == '=' {
+                token.kind = Kind::Mnuasgn;
+            }
+            else {
+                // todo できればfor文じゃなく書けるようにしたい
+                for word in KEY_WD_TBL.iter() {
+                    if ch.to_string() == word.val {
+                        token.kind = word.kind;
+                        break;
+                    }
+                }
+                *prev_ch = nch;
+                return token;
+            }
+            *prev_ch = next_ch(text);
         }
-
         _ => {
-
+            for word in KEY_WD_TBL.iter() {
+                if ch.to_string() == word.val {
+                    token.kind = word.kind;
+                    break;
+                }
+            }
+            *prev_ch = next_ch(text);
         }
     }
     token
@@ -184,14 +234,16 @@ fn next_ch(text: &mut Chars) -> char{
                 }
             }
         } else {
-            parse_error();
+            parse_error(ch.to_string());
         }
     }
 
     ch
 }
 
-fn parse_error() {
+fn parse_error(message: String) {
+    //println!("{}", message);
+    println!("NG");
     std::process::exit(1);
 }
 
