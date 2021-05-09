@@ -4,17 +4,17 @@ use std::str::Chars;
 pub enum Kind {
     Lparen, Rparen, Plus, Minus, Multi, Divi, Equal, NotEq,
     Less, LessEq, Greater, GreaterEq, SngQ, DblQ, Assign, Semicolon,
-    If, Else, Print, Ident, IntNum,
+    If, Else, Print, Ident, Int,
     String, Letter, Digit, Nulkind, EofTkn, Others, Endlist,
     Lbrace, Rbrace, Char, Nyaan, Addasgn, Mnuasgn, Multiasgn, Divasgn
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Token{
-    text: String,
-    chr: char,
-    kind: Kind,
-    val: i32,
+    pub text: String,
+    pub chr: char,
+    pub kind: Kind,
+    pub val: i32,
 }
 impl Token {
     pub fn new() -> Token {
@@ -54,7 +54,7 @@ pub const KEY_WD_TBL: [KeyWd; 25] = [
     KeyWd{val: "nyaan", kind: Kind::Nyaan},
     ]; // todo
 
-
+#[allow(dead_code)]
 #[derive(PartialEq, Debug, Copy, Clone, )]
 pub enum Ch {
     Others, Digit, Letter, Assign, Lparen, Rparen, Less, Greater,
@@ -148,7 +148,7 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
                 // todo 文字数制限
             }
             if ch_list[ch as usize] == Ch::Letter { parse_error(ch.to_string()); }
-            token.kind = Kind::IntNum;
+            token.kind = Kind::Int;
             token.val = s.parse().unwrap();
             *prev_ch = ch;
         },
@@ -249,6 +249,7 @@ fn parse_error(message: String) {
 
 use std::env;
 use std::fs;
+#[allow(dead_code)]
 fn main() {
     let args: Vec<String> = env::args().collect();
 
