@@ -222,7 +222,6 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
             *prev_ch = next_ch(text);
         }
     }
-    println!("{:?} {} {} {}", token.kind, token.text, token.chr, token.val);
     token
 }
 
