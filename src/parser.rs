@@ -4,13 +4,15 @@ use tokenizer::{Kind, Token, /* KeyWd, KEY_WD_TBL */};
 #[derive(Debug)]
 pub enum Expr {
     Int(Int),
-    BinaryOp(Box<BinaryOp>)
+    BinaryOp(Box<BinaryOp>),
+    Nope
 }
 impl Expr {
     pub fn eval(&self) -> i32 {
         match self {
             Expr::Int(e) => e.eval(),
-            Expr::BinaryOp(e) => e.eval()
+            Expr::BinaryOp(e) => e.eval(),
+            Expr::Nope => 0
         }
     }
 }
@@ -49,17 +51,16 @@ impl BinaryOp {
 }
 
 
-pub fn token_to_expr(token_list: &Vec<Token>) {
+pub fn token_to_expr(token_list: &Vec<Token>) -> Expr{
     let mut stack:Vec<Expr> = Vec::new();
     let root: Expr = match next_tkn(0, token_list, &mut stack) {
         None => {
             parse_error("file is empty".to_string());
-            return;
+            return Expr::Nope
         },
         Some(expr) => expr
     };
-    println!("{}", root.eval());
-
+    root
 }
 
 pub fn next_tkn(index: usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) -> Option<Expr> {
@@ -132,12 +133,46 @@ fn main() {
     };
 
     let token_list = tokenizer::tokenize(&mut text.chars());
-/*
-    println!("text\tkind\tval");
-    for tkn in token_list {
-        println!("{}\t{:?}\t{}", tkn.text, tkn.kind, tkn.val);
-    }
-*/
-    token_to_expr(&token_list);
+    let res = token_to_expr(&token_list);
+    println!("{:?}", res);
+    println!("res = {}", res.eval());
 
+}
+
+
+#[allow(unused_macros)]
+macro_rules! tst {
+    ($x:expr) => {token_to_expr( &tokenizer::tokenize(&mut $x.to_string().chars())).eval()}
+}
+
+#[allow(unused_imports)]
+use rand::Rng;
+
+#[test]
+fn parser_test() {
+    assert!(tst!("1 + 1") == 2);
+    assert!(tst!("1 + 2 - 3") == 0);
+    assert!(tst!("99*31-20" ) == 3049);
+    //assert!(tst!("100 + 99*31-20+ 19 / 19") == 3150);
+    /*
+    for i in 0..100 {
+        let mut s: String = String::new();
+        let mut rng = rand::thread_rng();
+        let limit: i32 = rng.gen() % 1000;
+        let mut ans: i32;
+        for i in 0..limit {
+            let num: i32 = rng.gen() % 1000;
+            let expr: i32 = rng.gen() % 4;
+            if i == 0 { ans = num; s = num.to_string(); }
+            if i != limit - 1{
+                match expr {
+                    0 => {
+                        s = s + &'+'.to_string();
+                        num += 
+                    }
+                }
+            }
+        }
+    }
+    */
 }
