@@ -51,8 +51,15 @@ impl BinaryOp {
 
 pub fn token_to_expr(token_list: &Vec<Token>) {
     let mut stack:Vec<Expr> = Vec::new();
-    println!("{:?}",next_tkn(0, token_list, &mut stack));
-    println!("OK?");
+    let root: Expr = match next_tkn(0, token_list, &mut stack) {
+        None => {
+            parse_error("file is empty".to_string());
+            return;
+        },
+        Some(expr) => expr
+    };
+    println!("{}", root.eval());
+
 }
 
 pub fn next_tkn(index: usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) -> Option<Expr> {
