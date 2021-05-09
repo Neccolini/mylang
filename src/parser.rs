@@ -1,6 +1,7 @@
 mod tokenizer;
 use tokenizer::{Kind, Token, /* KeyWd, KEY_WD_TBL */};
 
+#[derive(Debug)]
 pub enum Expr {
     Int(Int),
     BinaryOp(Box<BinaryOp>)
@@ -13,7 +14,7 @@ impl Expr {
         }
     }
 }
-
+#[derive(Debug)]
 
 pub struct Int(i32);
 impl Int {
@@ -24,7 +25,7 @@ impl Int {
         self.0
     }
 }
-
+#[derive(Debug)]
 pub struct BinaryOp {
     kind: Kind,
     left_expr: Expr,
@@ -50,8 +51,8 @@ impl BinaryOp {
 
 pub fn token_to_expr(token_list: &Vec<Token>) {
     let mut stack:Vec<Expr> = Vec::new();
-    next_tkn(0, token_list, &mut stack);
-
+    println!("{:?}",next_tkn(0, token_list, &mut stack));
+    println!("OK?");
 }
 
 pub fn next_tkn(index: usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) -> Option<Expr> {
@@ -65,7 +66,7 @@ pub fn next_tkn(index: usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) ->
             stack.push(Expr::Int(Int::new(token.val)));
             next_tkn(index + 1, &token_list, stack)
         },
-        
+
         Kind::Plus | Kind::Minus | Kind::Multi | Kind::Divi => {
             let left:Expr = match stack.pop() {
                 None => {
