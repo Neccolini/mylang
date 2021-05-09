@@ -17,3 +17,6 @@ path = "src/main.rs"
 name = "tokenizer"
 path = "src/tokenizer.rs"
 
+[[bin]]
+name = "parser"
+path = "src/parser.rs"
