@@ -147,14 +147,14 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
                 ch = next_ch(text);
                 // todo 文字数制限
             }
-            if ch_list[ch as usize] == Ch::Letter { parse_error(ch.to_string()); }
+            if ch_list[ch as usize] == Ch::Letter { parse_error("error at: Digit ".to_string() + &ch.to_string()); }
             token.kind = Kind::Int;
             token.val = s.parse().unwrap();
             *prev_ch = ch;
         },
         Ch::SngQ => {
             let c: char = next_ch(text);
-            if next_ch(text) != '\'' { parse_error(ch.to_string()); }
+            if next_ch(text) != '\'' { parse_error("error at: SngQ ".to_string() + &ch.to_string()); }
             token.kind = Kind::Char;
             token.chr = c;
         },
@@ -165,7 +165,7 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
             while ch != '"' {
                 s = s + &ch.to_string();
                 ch = next_ch(text);
-                if ch == '\0' { parse_error(ch.to_string()); }
+                if ch == '\0' { parse_error("error at: DblQ ".to_string() + &ch.to_string());  }
             }
             token.kind = Kind::String;
             token.text = s;
@@ -186,6 +186,18 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
             }
             else if ch == '-' && nch == '=' {
                 token.kind = Kind::Mnuasgn;
+            }
+            else if ch == '*' && nch == '=' {
+                token.kind = Kind::Multiasgn;
+            }
+            else if ch == '/' && nch == '=' {
+                token.kind = Kind::Divasgn;
+            }
+            else if ch == '<' && nch == '=' {
+                token.kind = Kind::LessEq;
+            }
+            else if ch == '>' && nch == '=' {
+                token.kind = Kind::GreaterEq;
             }
             else {
                 // todo できればfor文じゃなく書けるようにしたい
@@ -210,31 +222,33 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
             *prev_ch = next_ch(text);
         }
     }
+    println!("{:?} {} {} {}", token.kind, token.text, token.chr, token.val);
     token
 }
 
 
 
 fn next_ch(text: &mut Chars) -> char{
-    let mut ch = match text.next() {
+    let ch: char = match text.next() {
         None => return '\0',
         Some(h) => h
     };
 
     if ch == '/'  {
-        ch = match text.next() {
+        let mut nch = match text.next() {
             None => return '\0',
             Some(h) => h,
         };
-        if ch == '/' {
-            while ch != '\n' {
-                ch = match text.next() {
+        if nch == '/' {
+            while nch != '\n' {
+                nch = match text.next() {
                     None => return '\0',
                     Some(h) => h,
                 }
             }
+            return nch;
         } else {
-            parse_error(ch.to_string());
+            //parse_error("error at: comment ".to_string() + &ch.to_string());
         }
     }
 
