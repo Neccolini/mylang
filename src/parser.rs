@@ -1,7 +1,7 @@
 mod tokenizer;
 use tokenizer::{Kind, Token, /* KeyWd, KEY_WD_TBL */};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Int(Int),
     BinaryOp(Box<BinaryOp>),
@@ -16,7 +16,7 @@ impl Expr {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 
 pub struct Int(i32);
 impl Int {
@@ -27,7 +27,7 @@ impl Int {
         self.0
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryOp {
     kind: Kind,
     left_expr: Expr,
@@ -53,26 +53,42 @@ impl BinaryOp {
 
 pub fn token_to_expr(token_list: &Vec<Token>) -> Expr{
     let mut stack:Vec<Expr> = Vec::new();
-    let root: Expr = match next_tkn(0, token_list, &mut stack) {
+    let mut root:Expr = Expr::Nope;
+    let mut index:usize = 0;
+    /*
+while index < token_list.len() {
+    println!("idnex: {}",index);
+    root = match next_tkn(&mut index, token_list, &mut stack) {
         None => {
-            parse_error("file is empty".to_string());
-            return Expr::Nope
+            root
+        },
+        Some(expr) => expr
+    };
+    index += 1;
+}
+*/
+    root = match next_tkn(&mut index, token_list, &mut stack) {
+        None => {
+            root
         },
         Some(expr) => expr
     };
     root
 }
 
-pub fn next_tkn(index: usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) -> Option<Expr> {
-    let token:&Token = match token_list.get(index) {
+pub fn next_tkn(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) -> Option<Expr> {
+    let token:&Token = match token_list.get(*index) {
         None => return None,
         Some(h) => h,
     };
     println!("{:?} {}", token.kind, token.val);
     match token.kind {
         Kind::Int => {
-            stack.push(Expr::Int(Int::new(token.val)));
-            next_tkn(index + 1, &token_list, stack)
+{ 
+                stack.push(Expr::Int(Int::new(token.val)));
+                *index += 1;
+                next_tkn(index, &token_list, stack)
+            }
         },
 
         Kind::Plus | Kind::Minus | Kind::Multi | Kind::Divi => {
@@ -83,22 +99,27 @@ pub fn next_tkn(index: usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) ->
                 },
                 Some(h) => h,
             };
-            let right:Expr = match next_tkn(index + 1, &token_list, stack) {
+            println!("left {:?}", left);
+            let right:Expr = match next_tkn(&mut (*index + 1), &token_list, stack) {
                 None => {
-                    parse_error("operand not found".to_string());
+                    //parse_error("operand not found".to_string());
                     return None;
                 },
                 Some(h) => h,
             };
+            *index += 1;
             let binary_op: Box<BinaryOp> = Box::new(BinaryOp::new(
-                        token.kind, 
+                        token.kind,
                         left,
                         right
             ));
-            return Some(Expr::BinaryOp(binary_op));
+            let binary_op2:Box<BinaryOp> = binary_op.clone();
+            stack.push(Expr::BinaryOp(binary_op));
+            return Some(Expr::BinaryOp(binary_op2));
 
         }
         _ => {
+            *index += 1;
             return stack.pop()
         }
     }
@@ -152,7 +173,9 @@ use rand::Rng;
 fn parser_test() {
     assert!(tst!("1 + 1") == 2);
     assert!(tst!("1 + 2 - 3") == 0);
-    assert!(tst!("99*31-20" ) == 3049);
+    assert!(tst!("2*3+4" ) == 10);
+    assert!(tst!("2+3*4") == 14);
+    assert!(tst!("1*2+3*4") == 14);
     //assert!(tst!("100 + 99*31-20+ 19 / 19") == 3150);
     /*
     for i in 0..100 {
