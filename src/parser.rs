@@ -68,7 +68,6 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, 
     };
     let cell_token:Cell<&Token> = Cell::new(token);
 
-    
     match token.kind {
         Kind::Ident => { // todo 変数宣言の宣言(letなど)を認識
             *index += 1;
@@ -76,9 +75,9 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, 
                 None => return,
                 Some(tkn) => tkn,
             };
-            check_tkn(token,Kind::Assign, "= is missing".to_string());// todo Addasgn などに対応させる
-            expression(&cell_token, index, token_list, stack);
-            check_tkn(token, Kind::Semicolon, "; is missing".to_string());
+            check_tkn(&cell_token,index, token_list, Kind::Assign, "= is missing".to_string()); // todo Addasgn などに対応させる
+            expression(&cell_token, index, token_list, stack, id_map);
+            check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string());
             id_map.insert(token.text.clone(), match stack.pop() {
                 None => {parse_error("stack pop failed: stack is empty".to_string()); return; },
                 Some(expr) => expr,
@@ -94,10 +93,10 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, 
 }
 
 #[allow(unused_assignments)]
-fn expression<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>) {
+fn expression<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
     let mut op: Kind = Kind::Nulkind;
     let mut token:&Token = cell_token.get();
-    term(cell_token, index, token_list, stack);
+    term(cell_token, index, token_list, stack, id_map);
     while token.kind == Kind::Plus || token.kind == Kind::Minus {
         op = token.kind;
         *index += 1;
@@ -106,16 +105,16 @@ fn expression<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list:
             Some(tkn) => tkn,
         };
         cell_token.set(token);
-        term(cell_token, index, token_list, stack);
+        term(cell_token, index, token_list, stack, id_map);
         operate(op, stack);
     }
 }
 
 #[allow(unused_assignments)]
-fn term<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>) {
+fn term<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
     let mut op: Kind = Kind::Nulkind;
     let mut token: &Token = cell_token.get();
-    factor(cell_token, index, token_list, stack);
+    factor(cell_token, index, token_list, stack, id_map);
     while token.kind == Kind::Multi || token.kind == Kind::Divi {
         op = token.kind;
         *index += 1;
@@ -124,16 +123,16 @@ fn term<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a 
             Some(tkn) => tkn,
         };
         cell_token.set(token);
-        factor(cell_token, index, token_list, stack);
+        factor(cell_token, index, token_list, stack, id_map);
         operate(op, stack);
     }
 }
 
-fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>) {
-    let mut token = cell_token.get();
+fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
+    let mut token: &Token = cell_token.get();
     match token.kind {
         Kind::Ident => {
-
+            stack.push(id_map[&token.text].clone());
         },
         Kind::Int => {
             stack.push(Expr::Int(Int::new(token.val)));
@@ -145,8 +144,8 @@ fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'
                 Some(tkn) => tkn,
             };
             cell_token.set(token);
-            expression(cell_token, index, token_list, stack);
-            check_tkn(token, Kind::Rparen, ") is missing".to_string());
+            expression(cell_token, index, token_list, stack, id_map);
+            check_tkn(cell_token, index, token_list, Kind::Rparen, ") is missing".to_string());
             
         },
         _ => {
@@ -162,11 +161,18 @@ fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'
 }
 
 
-fn check_tkn(token: &Token, tp: Kind, message:String) {
+fn check_tkn<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, tp: Kind, message:String) {
+    let mut token:&Token = cell_token.get();
     if token.kind != tp {
         println!("error: {}", message);
         std::process::exit(1);
     }
+    *index += 1;
+    token = match token_list.get(*index) {
+        None => return,
+        Some(tkn) => tkn,
+    };
+    cell_token.set(token);
 }
 
 
