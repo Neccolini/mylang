@@ -1,6 +1,6 @@
 use std::str::Chars;
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
 pub enum Kind {
     Lparen, Rparen, Plus, Minus, Multi, Divi, Equal, NotEq,
     Less, LessEq, Greater, GreaterEq, SngQ, DblQ, Assign, Semicolon,
