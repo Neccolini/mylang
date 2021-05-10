@@ -55,14 +55,21 @@ impl BinaryOp {
 pub fn token_to_expr(token_list: &Vec<Token>) -> Expr {
     let mut stack: Vec<Expr> = Vec::new();
     let mut id_map: HashMap<String, Expr> = HashMap::new();
-    for mut i in 0..token_list.len() {
+    let mut i = 0;
+    while i < token_list.len() - 1 {
         statement(&mut i, token_list, &mut stack, &mut id_map);
+        // todo Endlistだったらbreakというように変更
     }
-    Expr::Nope
+
+    match stack.pop() {
+        None => Expr::Nope,
+        Some(expr) => expr
+    }
 }
 
+
 fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
-    let mut token:&Token = match token_list.get(*index) {
+    let token:&Token = match token_list.get(*index) {
         None => return,
         Some(tkn) => tkn,
     };
@@ -70,66 +77,66 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, 
 
     match token.kind {
         Kind::Ident => { // todo 変数宣言の宣言(letなど)を認識
-            *index += 1;
-            token = match token_list.get(*index) {
-                None => return,
-                Some(tkn) => tkn,
-            };
-            check_tkn(&cell_token,index, token_list, Kind::Assign, "= is missing".to_string()); // todo Addasgn などに対応させる
+            let variable_name:String = token.text.clone();
+            next_tkn(&cell_token, index, token_list);
+            check_tkn(&cell_token, index, token_list, Kind::Assign, "= is missing".to_string(), true); // todo Addasgn などに対応させる
             expression(&cell_token, index, token_list, stack, id_map);
-            check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string());
-            id_map.insert(token.text.clone(), match stack.pop() {
+            check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(), true);
+            id_map.insert(variable_name, match stack.pop() {
                 None => {parse_error("stack pop failed: stack is empty".to_string()); return; },
                 Some(expr) => expr,
             });
         },
         Kind::Print => {
-
+            next_tkn(&cell_token, index, token_list);
+            check_tkn(&cell_token, index, token_list, Kind::Lparen, "( is missing for print function".to_string(), true);
+                expression(&cell_token, index, token_list, stack, id_map);
+            println!("{}", match stack.pop() {
+                None => {parse_error("print error; stack is empty".to_string()); return; }, // todo error messageを変更
+                Some(expr) => {
+                    expr.eval()
+                }
+            });
+            check_tkn(&cell_token, index, token_list, Kind::Rparen, ") is missing for print function".to_string(), true);
+            check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(),true);
         }
         _ => {
             
         }
     }
+
 }
 
 #[allow(unused_assignments)]
 fn expression<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
     let mut op: Kind = Kind::Nulkind;
-    let mut token:&Token = cell_token.get();
     term(cell_token, index, token_list, stack, id_map);
+    let mut token: &Token = cell_token.get();
     while token.kind == Kind::Plus || token.kind == Kind::Minus {
         op = token.kind;
-        *index += 1;
-        token = match token_list.get(*index) {
-            None => return,
-            Some(tkn) => tkn,
-        };
-        cell_token.set(token);
+        next_tkn(cell_token, index, token_list);
         term(cell_token, index, token_list, stack, id_map);
         operate(op, stack);
+        token = cell_token.get();
     }
 }
 
 #[allow(unused_assignments)]
 fn term<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
     let mut op: Kind = Kind::Nulkind;
-    let mut token: &Token = cell_token.get();
     factor(cell_token, index, token_list, stack, id_map);
+    let mut token: &Token = cell_token.get();
     while token.kind == Kind::Multi || token.kind == Kind::Divi {
         op = token.kind;
-        *index += 1;
-        token = match token_list.get(*index) {
-            None => return,
-            Some(tkn) => tkn,
-        };
-        cell_token.set(token);
+        next_tkn(cell_token, index, token_list);
         factor(cell_token, index, token_list, stack, id_map);
         operate(op, stack);
+        token = cell_token.get();
     }
 }
 
 fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
-    let mut token: &Token = cell_token.get();
+    let token: &Token = cell_token.get();
     match token.kind {
         Kind::Ident => {
             stack.push(id_map[&token.text].clone());
@@ -138,43 +145,41 @@ fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'
             stack.push(Expr::Int(Int::new(token.val)));
         },
         Kind::Lparen => {
-            *index += 1;
-            token = match token_list.get(*index) {
-                None => return,
-                Some(tkn) => tkn,
-            };
-            cell_token.set(token);
+            next_tkn(cell_token, index, token_list);
             expression(cell_token, index, token_list, stack, id_map);
-            check_tkn(cell_token, index, token_list, Kind::Rparen, ") is missing".to_string());
+            check_tkn(cell_token, index, token_list, Kind::Rparen, ") is missing".to_string(), false);
             
         },
         _ => {
             
         }
     }
-    *index += 1;
-    token = match token_list.get(*index) {
-        None => return,
-        Some(tkn) => tkn,
-    };
-    cell_token.set(token);
+    next_tkn(cell_token, index, token_list);
 }
 
 
-fn check_tkn<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, tp: Kind, message:String) {
-    let mut token:&Token = cell_token.get();
+fn check_tkn<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, tp: Kind, message:String, next: bool) {
+    let token:&Token = cell_token.get();
     if token.kind != tp {
+        println!("{:?} {:?} {}", token.kind, tp, *index);
         println!("error: {}", message);
         std::process::exit(1);
     }
+    if next {
+        next_tkn(cell_token, index, token_list);
+    }
+}
+
+#[allow(unused_assignments)]
+fn next_tkn<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>) {
+    let mut token = cell_token.get();
     *index += 1;
     token = match token_list.get(*index) {
         None => return,
-        Some(tkn) => tkn,
+        Some(tkn) => tkn
     };
     cell_token.set(token);
 }
-
 
 fn operate(op: Kind, stack: &mut Vec<Expr>) {
     let d2:Expr = match stack.pop() {
@@ -188,60 +193,6 @@ fn operate(op: Kind, stack: &mut Vec<Expr>) {
     stack.push(Expr::BinaryOp(Box::new(BinaryOp::new(op, d1, d2))));
 }  
 
-
-/*
-pub fn next_tkn(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) -> Option<Expr> {
-    let token:&Token = match token_list.get(*index) {
-        None => return None,
-        Some(h) => h,
-    };
-    println!("{:?} {}", token.kind, token.val);
-    match token.kind {
-        Kind::Int => {
-            if stack.is_empty() {
-                stack.push(Expr::Int(Int::new(token.val)));
-            }
-            *index += 1;
-            next_tkn(index, &token_list, stack)
-            
-        },
-
-        Kind::Plus | Kind::Minus | Kind::Multi | Kind::Divi => {
-            let left:Expr = match stack.pop() {
-                None => {
-                    parse_error("stack pop failed: stack is empty".to_string());
-                    return None;
-                },
-                Some(h) => h,
-            };
-            println!("left {:?}", left);
-            let right:Expr = match next_tkn(&mut (*index + 1), &token_list, stack) {
-                None => {
-                    //parse_error("operand not found".to_string());
-                    return None;
-                },
-                Some(h) => h,
-            };
-            *index += 1;
-            let binary_op: Box<BinaryOp> = Box::new(BinaryOp::new(
-                        token.kind,
-                        left,
-                        right
-            ));
-            //let binary_op2:Box<BinaryOp> = binary_op.clone();
-            if token.kind == Kind::Multi || token.kind == Kind::Divi {
-                stack.push(Expr::BinaryOp(binary_op));
-            }
-            return next_tkn(index, token_list, stack);
-
-        }
-        _ => {
-            *index += 1;
-            return stack.pop()
-        }
-    }
-}
-*/
 
 fn parse_error(message: String) {
     println!("{}", message);
@@ -271,9 +222,7 @@ fn main() {
     };
 
     let token_list = tokenizer::tokenize(&mut text.chars());
-    let res = token_to_expr(&token_list);
-    println!("{:?}", res);
-    println!("res = {}", res.eval());
+    token_to_expr(&token_list);
 
 }
 
