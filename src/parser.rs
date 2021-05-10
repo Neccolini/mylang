@@ -61,9 +61,6 @@ pub fn token_to_expr(token_list: &Vec<Token>) -> Expr {
     Expr::Nope
 }
 
-#[allow(unused_mut)]
-#[allow(unused_variables)]
-#[allow(unused_assignments)]
 fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
     let mut token:&Token = match token_list.get(*index) {
         None => return,
@@ -132,7 +129,6 @@ fn term<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a 
     }
 }
 
-#[allow(unreachable_code)]
 fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>) {
     let mut token = cell_token.get();
     match token.kind {
