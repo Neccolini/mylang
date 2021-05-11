@@ -232,25 +232,28 @@ fn next_ch(text: &mut Chars) -> char{
         None => return '\0',
         Some(h) => h
     };
-
+    // todo commentを処理したい.....
+    /*
     if ch == '/'  {
-        let mut nch = match text.next() {
-            None => return '\0',
-            Some(h) => h,
-        };
+
+        println!("{}", nch);
         if nch == '/' {
-            while nch != '\n' {
-                nch = match text.next() {
+            let mut nnch = match text.next() {
+                None => return '\0',
+                Some(h) => h,
+            };
+            while nnch != '\n' {
+                nnch = match text.next() {
                     None => return '\0',
                     Some(h) => h,
                 }
             }
-            return nch;
+            return nnch;
         } else {
             //parse_error("error at: comment ".to_string() + &ch.to_string());
         }
     }
-
+    */
     ch
 }
 
