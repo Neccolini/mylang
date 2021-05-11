@@ -7,6 +7,8 @@ use std::collections::HashMap;
 pub enum Expr {
     Int(Int),
     BinaryOp(Box<BinaryOp>),
+    Ident(Box<Ident>),
+    Assign(Box<Assign>),
     Nope
 }
 impl Expr {
@@ -14,12 +16,15 @@ impl Expr {
         match self {
             Expr::Int(e) => e.eval(),
             Expr::BinaryOp(e) => e.eval(),
+            Expr::Ident(e) => e.eval(),
+            Expr::Assign(e) => e.eval(),
             Expr::Nope => 0
         }
     }
 }
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 
+// Int: 整数
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Int(i32);
 impl Int {
     pub fn new(val: i32) -> Int {
@@ -29,6 +34,8 @@ impl Int {
         self.0
     }
 }
+
+// BinaryOp: 四則演算 + - * /
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BinaryOp {
     kind: Kind,
@@ -52,13 +59,42 @@ impl BinaryOp {
     }
 }
 
+// Ident: 変数
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Ident {
+    name: String,
+    kind: Kind, 
+}
+impl Ident {
+    pub fn new(name: String, kind: Kind) -> Ident {
+        Ident {name, kind}
+    }
+    pub fn eval(&self) -> i32 {
+        0
+    }
+}
+
+// Assign: =
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Assign {
+    left_expr: Expr,
+    right_expr: Expr,
+}
+impl Assign {
+    pub fn new(left_expr:Expr, right_expr: Expr) -> Assign {
+        Assign {left_expr, right_expr}
+    }
+    pub fn eval(&self) -> i32 {
+        0
+    }
+}
+
 pub fn token_to_expr(token_list: &Vec<Token>) -> Expr {
     let mut stack: Vec<Expr> = Vec::new();
     let mut id_map: HashMap<String, Expr> = HashMap::new();
     let mut i = 0;
     while i < token_list.len() - 1 {
         statement(&mut i, token_list, &mut stack, &mut id_map);
-        // todo Endlistだったらbreakというように変更
     }
 
     match stack.pop() {
@@ -77,15 +113,24 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, 
 
     match token.kind {
         Kind::Ident => { // todo 変数宣言の宣言(letなど)を認識
-            let variable_name:String = token.text.clone();
+            let variable_name: String = token.text.clone();
+            // ここでexpr::Identをstackにpush 今回は変数宣言だけでstackは使わない？
+            let ident = Expr::Ident(Box::new(Ident::new(variable_name.clone(), Kind::Int)));
             next_tkn(&cell_token, index, token_list);
             check_tkn(&cell_token, index, token_list, Kind::Assign, "= is missing".to_string(), true); // todo Addasgn などに対応させる
+            // ここでExpr::Assignを宣言 left->先程のexpr::Ident, right->expressionの返り値？
             expression(&cell_token, index, token_list, stack, id_map);
-            check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(), true);
-            id_map.insert(variable_name, match stack.pop() {
+            let right_expr = match stack.pop() {
                 None => {parse_error("stack pop failed: stack is empty".to_string()); return; },
                 Some(expr) => expr,
-            });
+            };
+            let assign: Expr = Expr::Assign(Box::new(Assign::new(
+                    ident, 
+                    right_expr.clone(),
+            )));
+            println!("assign {:?}", assign);
+            check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(), true);
+            id_map.insert(variable_name, right_expr);
         },
         Kind::Print => {
             next_tkn(&cell_token, index, token_list);
@@ -182,7 +227,7 @@ fn next_tkn<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: 
 }
 
 fn operate(op: Kind, stack: &mut Vec<Expr>) {
-    let d2:Expr = match stack.pop() {
+    let d2: Expr = match stack.pop() {
         None => { parse_error("error: stack is empty".to_string()); return;},
         Some(expr) => expr
     };
