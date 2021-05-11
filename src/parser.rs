@@ -9,6 +9,7 @@ pub enum Expr {
     BinaryOp(Box<BinaryOp>),
     Ident(Box<Ident>),
     Assign(Box<Assign>),
+    Print(Box<Print>),
     Nope
 }
 impl Expr {
@@ -18,6 +19,7 @@ impl Expr {
             Expr::BinaryOp(e) => e.eval(),
             Expr::Ident(e) => e.eval(),
             Expr::Assign(e) => e.eval(),
+            Expr::Print(_) => 0,
             Expr::Nope => 0
         }
     }
@@ -89,24 +91,36 @@ impl Assign {
     }
 }
 
-pub fn token_to_expr(token_list: &Vec<Token>) -> Expr {
+
+// Print: print
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Print {
+    val: Expr,
+}
+impl Print {
+    pub fn new(val: Expr) -> Print {
+        Print { val }
+    }
+    pub fn eval(&self) -> i32 {
+        0
+    }
+}
+
+pub fn token_to_expr(token_list: &Vec<Token>) -> Vec<Expr> {
+    let mut expr_list:Vec<Expr> = Vec::new();
     let mut stack: Vec<Expr> = Vec::new();
     let mut id_map: HashMap<String, Expr> = HashMap::new();
     let mut i = 0;
     while i < token_list.len() - 1 {
-        statement(&mut i, token_list, &mut stack, &mut id_map);
+        expr_list.push(statement(&mut i, token_list, &mut stack, &mut id_map));
     }
-
-    match stack.pop() {
-        None => Expr::Nope,
-        Some(expr) => expr
-    }
+    expr_list
 }
 
 
-fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) {
+fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, id_map: &mut HashMap<String, Expr>) -> Expr {
     let token:&Token = match token_list.get(*index) {
-        None => return,
+        None => return Expr::Nope,
         Some(tkn) => tkn,
     };
     let cell_token:Cell<&Token> = Cell::new(token);
@@ -121,35 +135,35 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, 
             // ここでExpr::Assignを宣言 left->先程のexpr::Ident, right->expressionの返り値？
             expression(&cell_token, index, token_list, stack, id_map);
             let right_expr = match stack.pop() {
-                None => {parse_error("stack pop failed: stack is empty".to_string()); return; },
+                None => {parse_error("stack pop failed: stack is empty".to_string()); return Expr::Nope; },
                 Some(expr) => expr,
             };
             let assign: Expr = Expr::Assign(Box::new(Assign::new(
                     ident, 
                     right_expr.clone(),
             )));
-            println!("assign {:?}", assign);
             check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(), true);
             id_map.insert(variable_name, right_expr);
+            return assign;
         },
         Kind::Print => {
+            
             next_tkn(&cell_token, index, token_list);
             check_tkn(&cell_token, index, token_list, Kind::Lparen, "( is missing for print function".to_string(), true);
-                expression(&cell_token, index, token_list, stack, id_map);
-            println!("{}", match stack.pop() {
-                None => {parse_error("print error; stack is empty".to_string()); return; }, // todo error messageを変更
-                Some(expr) => {
-                    expr.eval()
-                }
-            });
+            expression(&cell_token, index, token_list, stack, id_map);
+            let print = Expr::Print(Box::new(Print::new(match stack.pop() {
+                None => {parse_error("print error; stack is empty".to_string()); return Expr::Nope; }, // todo error messageを変更
+                Some(expr) => expr
+            })));
             check_tkn(&cell_token, index, token_list, Kind::Rparen, ") is missing for print function".to_string(), true);
             check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(),true);
+            return print
         }
         _ => {
-            
+
         }
     }
-
+    Expr::Nope
 }
 
 #[allow(unused_assignments)]
@@ -267,46 +281,11 @@ fn main() {
     };
 
     let token_list = tokenizer::tokenize(&mut text.chars());
-    token_to_expr(&token_list);
-
-}
-
-
-#[allow(unused_macros)]
-macro_rules! tst {
-    ($x:expr) => {token_to_expr( &tokenizer::tokenize(&mut $x.to_string().chars())).eval()}
-}
-
-#[allow(unused_imports)]
-use rand::Rng;
-
-#[test]
-fn parser_test() {
-    assert!(tst!("1 + 1") == 2);
-    assert!(tst!("1 + 2 - 3") == 0);
-    assert!(tst!("2*3+4" ) == 10);
-    assert!(tst!("2+3*4") == 14);
-    assert!(tst!("1*2+3*4") == 14);
-    //assert!(tst!("100 + 99*31-20+ 19 / 19") == 3150);
-    /*
-    for i in 0..100 {
-        let mut s: String = String::new();
-        let mut rng = rand::thread_rng();
-        let limit: i32 = rng.gen() % 1000;
-        let mut ans: i32;
-        for i in 0..limit {
-            let num: i32 = rng.gen() % 1000;
-            let expr: i32 = rng.gen() % 4;
-            if i == 0 { ans = num; s = num.to_string(); }
-            if i != limit - 1{
-                match expr {
-                    0 => {
-                        s = s + &'+'.to_string();
-                        num += 
-                    }
-                }
-            }
-        }
+    let expr_list = token_to_expr(&token_list);
+    for expr in expr_list {
+        println!("{:?}", expr);
     }
-    */
 }
+
+
+
