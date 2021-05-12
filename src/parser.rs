@@ -19,7 +19,7 @@ impl Expr {
             Expr::BinaryOp(e) => e.eval(),
             Expr::Ident(e) => e.eval(),
             Expr::Assign(e) => e.eval(),
-            Expr::Print(_) => 0,
+            Expr::Print(e) => e.eval(),
             Expr::Nope => 0
         }
     }
@@ -102,7 +102,7 @@ impl Print {
         Print { val }
     }
     pub fn eval(&self) -> i32 {
-        0
+        self.val.eval()
     }
 }
 
@@ -220,7 +220,6 @@ fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'
 fn check_tkn<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, tp: Kind, message:String, next: bool) {
     let token:&Token = cell_token.get();
     if token.kind != tp {
-        println!("{:?} {:?} {}", token.kind, tp, *index);
         println!("error: {}", message);
         std::process::exit(1);
     }
@@ -283,7 +282,7 @@ fn main() {
     let token_list = tokenizer::tokenize(&mut text.chars());
     let expr_list = token_to_expr(&token_list);
     for expr in expr_list {
-        println!("{:?}", expr);
+        println!("{}", expr.eval());
     }
 }
 
