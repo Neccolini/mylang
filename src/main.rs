@@ -3,6 +3,7 @@ use compiler::*;
 
 use std::env;
 use std::fs;
+
 #[allow(dead_code)]
 fn main() {
 
@@ -23,8 +24,8 @@ fn main() {
     };
 
     let token_list = tokenizer::tokenize(&mut text.chars());
-    let expr_list = parser::token_to_expr(&token_list);
-    for expr in expr_list {
-        println!("{:?}", expr);
-    }
+    let ast = parser::token_to_expr(&token_list);
+    compiler::create_llvm(&ast);
+
 }
+

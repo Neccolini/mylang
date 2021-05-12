@@ -3,19 +3,23 @@ use inkwell::builder::Builder;
 use inkwell::{AddressSpace};
 use inkwell::module::{Linkage, Module};
 use inkwell::types::IntType;
-use inkwell::values::PointerValue;
+use inkwell::values::{IntValue, PointerValue};
+use std::collections::HashMap;
 pub mod parser;
 pub mod tokenizer;
-
-pub struct Llvm<'a, 'ctx> {
-    pub context: &'ctx Context,
-    pub builder: &'a Builder<'ctx>,
-    pub module: &'a Module<'ctx>,
+#[allow(dead_code)]
+struct Llvm<'a, 'ctx> {
+    context: &'ctx Context,
+    builder: &'a Builder<'ctx>,
+    module: &'a Module<'ctx>,
+    variable_table: &'a HashMap<String, Variable<'a>>
 }
 impl<'a, 'ctx> Llvm<'a, 'ctx> {
-    pub fn new(context: &'ctx Context, module: &'a Module<'ctx>, builder: &'a Builder<'ctx>) -> Llvm<'a, 'ctx> {
-        Llvm {context, module, builder}
+    pub fn new(context: &'ctx Context, module: &'a Module<'ctx>, builder: &'a Builder<'ctx>, variable_table: &'a mut HashMap<String, Variable>) -> Llvm<'a, 'ctx> {
+        Llvm {context, module, builder, variable_table }
     }
+
+    // for print
     fn emit_global_string(&self, str: &&str, name: &str) -> PointerValue {
         let ty = self.context.i8_type().array_type(str.len() as u32);
         let gv = self.module.add_global(ty, Some(AddressSpace::Generic), name);
@@ -39,24 +43,68 @@ impl<'a, 'ctx> Llvm<'a, 'ctx> {
 
         i32_type
     }
-    fn expr_to_llvm(&self, expr_list: &Vec<Expr>) {
+    fn llvm(&self, expr_list: &Vec<Expr>) {
         for expr in expr_list {
-            match expr {
-                Expr::Assign(e) => {
-                    
-                },
-                Expr::Print(e) => {
-                    let x = e.val.clone();
-                    
-                },
-                _ => {
-    
+            self.expr_to_llvm_element(expr);
+        }
+    }
+    fn expr_to_llvm_element(&self, expr: &Expr) -> Data {
+        match expr {
+            Expr::Int(e) => {
+                return Data::Int(e.eval());
+            },
+            Expr::Ident(e) => {
+                if self.variable_table.contains_key(&e.name) {
+                    // すでに変数が宣言されている場合
+                    let data = *self.variable_table.get(&e.name).unwrap();
+                    // build_loadして、取り出す命令を書く
+                    self.builder.build_load(data.ptr(), &e.name); // todo now
+                    return data;
+                } else {
+                    //　変数が宣言されていない場合
+                    let i32_value = self.context.i32_type().const_int(e.eval() as u64, false);
+                    let const_int_ref = self.builder.build_alloca(self.context.i32_type(), &e.name);
+                    let int_var = Data::IntVar(Box::new(IntVar::new(const_int_ref, i32_value)));
+                    return int_var;
                 }
+            },
+            Expr::Assign(e) => {
+                let left = &e.left_expr.clone();
+                let right = &e.right_expr.clone();
+                
+                self.expr_to_llvm_element(left);
+            },
+            Expr::BinaryOp(e) => {
+                
+                match e.kind {
+                    Kind::Plus => {
+                        
+                        //self.builder.build_int_add(&self, e.left_expr)
+                    }
+                    Kind::Minus => {}
+                    Kind::Multi => {}
+                    Kind::Divi => {}
+                    _ => {}
+                }
+            }
+            _ => {
+
             }
         }
     }
 }
-
+fn type_of<T>(_: T) -> String{
+    let a = std::any::type_name::<T>();
+    return a.to_string();
+  }
+pub fn create_llvm(expr_list: &Vec<Expr>) {
+    let context = Context::create();
+    let module = context.create_module("main");
+    let builder = context.create_builder();
+    let mut variable_table:HashMap<String, Variable> = HashMap::new();
+    let llvm = Llvm::new(&context, &module, &builder, &mut variable_table);
+    llvm.llvm(expr_list);
+}
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
 pub enum Kind {
@@ -68,7 +116,7 @@ pub enum Kind {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct Token{
+pub struct Token {
     pub text: String,
     pub chr: char,
     pub kind: Kind,
@@ -119,19 +167,19 @@ impl Expr {
     }
 }
 
-// Int: ????
+// Int: ����
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Int(i32);
 impl Int {
     pub fn new(val: i32) -> Int {
         Int(val)
     }
-    pub fn eval(&self) -> i32 {
+    fn eval(&self) -> i32 {
         self.0
     }
 }
 
-// BinaryOp: ?l?????Z + - * /
+// BinaryOp: �l�����Z + - * /
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BinaryOp {
     pub kind: Kind,
@@ -155,18 +203,24 @@ impl BinaryOp {
     }
 }
 
-// Ident: ???
+// Ident: 変数
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident {
-    pub name: String,
-    pub kind: Kind, 
+    name: String,
+    kind: Kind, 
 }
 impl Ident {
     pub fn new(name: String, kind: Kind) -> Ident {
         Ident {name, kind}
     }
-    pub fn eval(&self) -> i32 {
+    fn eval(&self) -> i32 {
         0
+    }
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+    fn kind(&self) -> Kind {
+        self.kind
     }
 }
 
@@ -199,3 +253,42 @@ impl Print {
         self.val.eval()
     }
 }
+
+enum Data<'c> {
+    //変数
+    IntVar(Box<IntVar<'c>>),
+    //即値
+    Int(i32),
+    String,
+    Char,
+    Float,
+    Bool
+}
+
+struct IntVar<'c> {
+    ptr: PointerValue<'c>,
+    value: IntValue<'c>
+}
+impl IntVar<'static> {
+    fn new(ptr: PointerValue<'static>, value: IntValue<'static>) -> IntVar<'static> {
+        IntVar {ptr, value}
+    }
+    fn ptr(&self) -> PointerValue {
+        self.ptr
+    }
+}
+
+enum Variable<'c> {
+    IntVar(Box<IntVar<'c>>)
+}
+
+/*
+enum Immediate {
+    Int,
+    String,
+    Char,
+    Float,
+    Bool,
+}
+
+*/
