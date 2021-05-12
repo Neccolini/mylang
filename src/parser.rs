@@ -1,4 +1,4 @@
-
+mod tokenizer;
 use tokenizer::{Kind, Token, /* KeyWd, KEY_WD_TBL */};
 use std::cell::Cell;
 use std::collections::HashMap;
