@@ -21,3 +21,7 @@ path = "src/tokenizer.rs"
 [[bin]]
 name = "parser"
 path = "src/parser.rs"
+
+[[bin]]
+name = "llvmir"
+path = "src/llvmir.rs"
