@@ -12,11 +12,11 @@ struct Llvm<'a, 'ctx> {
     context: &'ctx Context,
     builder: &'a Builder<'ctx>,
     module: &'a Module<'ctx>,
-    variable_table: &'a HashMap<String, Variable<'a>>
+    int_var_table: &'a HashMap<String, IntVar<'a>>
 }
 impl<'a, 'ctx> Llvm<'a, 'ctx> {
-    pub fn new(context: &'ctx Context, module: &'a Module<'ctx>, builder: &'a Builder<'ctx>, variable_table: &'a mut HashMap<String, Variable>) -> Llvm<'a, 'ctx> {
-        Llvm {context, module, builder, variable_table }
+    pub fn new(context: &'ctx Context, module: &'a Module<'ctx>, builder: &'a Builder<'ctx>, int_var_table: &'a mut HashMap<String, IntVar>) -> Llvm<'a, 'ctx> {
+        Llvm {context, module, builder, int_var_table }
     }
 
     // for print
@@ -54,12 +54,13 @@ impl<'a, 'ctx> Llvm<'a, 'ctx> {
                 return Data::Int(e.eval());
             },
             Expr::Ident(e) => {
-                if self.variable_table.contains_key(&e.name) {
+                if self.int_var_table.contains_key(&e.name) {
                     // すでに変数が宣言されている場合
-                    let data = *self.variable_table.get(&e.name).unwrap();
+                    let data = *self.int_var_table.get(&e.name).unwrap();
                     // build_loadして、取り出す命令を書く
-                    self.builder.build_load(data.ptr(), &e.name); // todo now
-                    return data;
+                    self.builder.build_load(data.ptr, &e.name); // todo now
+                    let int_var = Data::IntVar(Box::new(data));
+                    return int_var;
                 } else {
                     //　変数が宣言されていない場合
                     let i32_value = self.context.i32_type().const_int(e.eval() as u64, false);
@@ -101,7 +102,7 @@ pub fn create_llvm(expr_list: &Vec<Expr>) {
     let context = Context::create();
     let module = context.create_module("main");
     let builder = context.create_builder();
-    let mut variable_table:HashMap<String, Variable> = HashMap::new();
+    let mut variable_table:HashMap<String, IntVar> = HashMap::new();
     let llvm = Llvm::new(&context, &module, &builder, &mut variable_table);
     llvm.llvm(expr_list);
 }
