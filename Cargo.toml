@@ -15,9 +15,5 @@ name = "main"
 path = "src/main.rs"
 
 [[bin]]
-name = "tokenizer"
-path = "src/tokenizer.rs"
-
-[[bin]]
-name = "parser"
-path = "src/parser.rs"
+name = "llvmir"
+path = "src/llvmir.rs"

@@ -1,5 +1,5 @@
 mod tokenizer;
-use tokenizer::{Kind, Token};
+use tokenizer::tokenizer::*;
 use std::cell::Cell;
 use std::collections::HashMap;
 
@@ -40,9 +40,9 @@ impl Int {
 // BinaryOp: 四則演算 + - * /
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BinaryOp {
-    kind: Kind,
-    left_expr: Expr,
-    right_expr: Expr
+    pub kind: Kind,
+    pub left_expr: Expr,
+    pub right_expr: Expr
 }
 impl BinaryOp {
     pub fn new(kind: Kind, left_expr:Expr, right_expr: Expr)-> BinaryOp {
@@ -64,8 +64,8 @@ impl BinaryOp {
 // Ident: 変数
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident {
-    name: String,
-    kind: Kind, 
+    pub name: String,
+    pub kind: Kind, 
 }
 impl Ident {
     pub fn new(name: String, kind: Kind) -> Ident {
@@ -79,8 +79,8 @@ impl Ident {
 // Assign: =
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Assign {
-    left_expr: Expr,
-    right_expr: Expr,
+    pub left_expr: Expr,
+    pub right_expr: Expr,
 }
 impl Assign {
     pub fn new(left_expr:Expr, right_expr: Expr) -> Assign {
@@ -95,7 +95,7 @@ impl Assign {
 // Print: print
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Print {
-    val: Expr,
+    pub val: Expr,
 }
 impl Print {
     pub fn new(val: Expr) -> Print {
@@ -257,34 +257,5 @@ fn parse_error(message: String) {
     println!("NG");
     std::process::exit(1);
 }
-
-
-
-use std::env;
-use std::fs;
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() == 1 {
-        println!("identify the filename to parse");
-        std::process::exit(1);
-    }
-
-    // todo(入力ファイルが大きいと失敗する可能性がある)
-    let text = match fs::read_to_string(&args[1]) {
-        Ok(n) => n,
-        Err(err) => {
-            println!("error : {}", err);
-            std::process::exit(1);
-        }
-    };
-
-    let token_list = tokenizer::tokenize(&mut text.chars());
-    let expr_list = token_to_expr(&token_list);
-    for expr in expr_list {
-        println!("{}", expr.eval());
-    }
-}
-
 
 
