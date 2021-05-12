@@ -8,12 +8,3 @@ edition = "2018"
 
 [dependencies]
 inkwell = {git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0"}
-rand = "0.8.3"
-
-[[bin]]
-name = "main"
-path = "src/main.rs"
-
-[[bin]]
-name = "llvmir"
-path = "src/llvmir.rs"
