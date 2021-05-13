@@ -1,4 +1,4 @@
-use inkwell::context::Context;
+use inkwell::{context::Context, execution_engine::ExecutionEngine};
 use inkwell::builder::Builder;
 use inkwell::{AddressSpace};
 use inkwell::module::{Linkage, Module};
@@ -8,15 +8,17 @@ use std::collections::HashMap;
 pub mod parser;
 pub mod tokenizer;
 #[allow(dead_code)]
-struct Llvm<'a, 'ctx> {
-    context: &'ctx Context,
-    builder: &'a Builder<'ctx>,
-    module: &'a Module<'ctx>,
-    int_var_table: &'a HashMap<String, IntVar<'a>>
+struct Llvm<'c> {
+    context: &'c Context,
+    builder: Builder<'c>,
+    module: Module<'c>,
+    int_var_table: &'c mut HashMap<String, PointerValue<'c>>,
 }
-impl<'a, 'ctx> Llvm<'a, 'ctx> {
-    pub fn new(context: &'ctx Context, module: &'a Module<'ctx>, builder: &'a Builder<'ctx>, int_var_table: &'a mut HashMap<String, IntVar>) -> Llvm<'a, 'ctx> {
+
+impl<'c> Llvm<'c> {
+    pub fn new(context: &'c Context, module: Module<'c>, builder: Builder<'c>, int_var_table: &'c mut HashMap<String, PointerValue<'c>>) -> Llvm<'c> {
         Llvm {context, module, builder, int_var_table }
+
     }
 
     // for print
@@ -48,50 +50,83 @@ impl<'a, 'ctx> Llvm<'a, 'ctx> {
             self.expr_to_llvm_element(expr);
         }
     }
-    fn expr_to_llvm_element(&self, expr: &Expr) -> Data {
+    fn expr_to_llvm_element(& self, expr: &Expr) -> Data {
         match expr {
-            Expr::Int(e) => {
-                return Data::Int(e.eval());
-            },
-            Expr::Ident(e) => {
-                if self.int_var_table.contains_key(&e.name) {
-                    // すでに変数が宣言されている場合
-                    let data = *self.int_var_table.get(&e.name).unwrap();
-                    // build_loadして、取り出す命令を書く
-                    self.builder.build_load(data.ptr, &e.name); // todo now
-                    let int_var = Data::IntVar(Box::new(data));
-                    return int_var;
-                } else {
-                    //　変数が宣言されていない場合
-                    let i32_value = self.context.i32_type().const_int(e.eval() as u64, false);
-                    let const_int_ref = self.builder.build_alloca(self.context.i32_type(), &e.name);
-                    let int_var = Data::IntVar(Box::new(IntVar::new(const_int_ref, i32_value)));
-                    return int_var;
-                }
-            },
             Expr::Assign(e) => {
                 let left = &e.left_expr.clone();
                 let right = &e.right_expr.clone();
-                
-                self.expr_to_llvm_element(left);
+                let leftname = left.name(); //Identのはず
+                let right_data = self.eval_int_formula(*right, false);
+                let rightval: IntValue = right_data.eval();
+                return self.declare_int(leftname, &rightval);
             },
-            Expr::BinaryOp(e) => {
-                
-                match e.kind {
-                    Kind::Plus => {
-                        
-                        //self.builder.build_int_add(&self, e.left_expr)
-                    }
-                    Kind::Minus => {}
-                    Kind::Multi => {}
-                    Kind::Divi => {}
-                    _ => {}
-                }
+            Expr::Print(e) => {
+                let val = e.val.clone();
+                std::process::exit(1);
             }
             _ => {
-
+                std::process::exit(1);
             }
         }
+    }
+    fn eval_int_formula(&self, expr: Expr, is_left: bool) -> Data {
+        match expr {
+            Expr::Int(e) => {
+                return self.const_int(e.eval());
+            }
+            Expr::BinaryOp(e) => {
+                match e.kind {
+                    Kind::Plus => {
+                        let left = self.eval_int_formula(e.left_expr, true).eval();
+                        let right = self.eval_int_formula(e.right_expr, false).eval();
+                        let add_pos = self.builder.build_int_add(left, right, "");
+                        return Data::Int(add_pos);
+                    },
+                    Kind::Minus => {
+                        let left = self.eval_int_formula(e.left_expr, true).eval();
+                        let right = self.eval_int_formula(e.right_expr, false).eval();
+                        let sub_pos = self.builder.build_int_sub(left, right, "");
+                        return Data::Int(sub_pos);
+                    },
+                    Kind::Multi => {
+                        let left = self.eval_int_formula(e.left_expr, true).eval();
+                        let right = self.eval_int_formula(e.right_expr, false).eval();
+                        let mul_pos = self.builder.build_int_mul(left, right, "");
+                        return Data::Int(mul_pos);
+                    },
+                    Kind::Divi => {
+                        let left = self.eval_int_formula(e.left_expr, true).eval();
+                        let right = self.eval_int_formula(e.right_expr, false).eval();
+                        let div_pos = self.builder.build_int_signed_div(left, right, "");
+                        return Data::Int(div_pos);
+                    },
+                    _ => {std::process::exit(1); }
+                }
+            }, 
+            _ => {
+                std::process::exit(1);
+            }
+        }
+    }
+    fn load_int(&self, name: String) -> Data {
+        let data = *self.int_var_table.get(&name).unwrap(); // todo: match でerror処理すべき
+        // build_loadして、取り出す命令を書く
+        self.builder.build_load(data.ptr, &name); // todo now
+        let int_var = Data::IntVar(Box::new(data));
+        return int_var;
+    }
+
+    fn declare_int(& self, name: String,  i32_value:  &'static IntValue) -> Data {
+        let const_int_ref:PointerValue = self.builder.build_alloca(self.context.i32_type(),&name);
+        let _ = self.builder.build_store(const_int_ref, *i32_value);
+        let int_var = IntVar::new(const_int_ref, *i32_value);
+        let data = Data::IntVar(Box::new(IntVar::new(const_int_ref, *i32_value)));
+        self.int_var_table.insert(name, int_var);
+        return data;
+    }
+
+    fn const_int(& self, val: i32) -> Data<'c> {
+        Data::Int(self.context.i32_type().const_int(val as u64, false))
     }
 }
 fn type_of<T>(_: T) -> String{
@@ -103,7 +138,7 @@ pub fn create_llvm(expr_list: &Vec<Expr>) {
     let module = context.create_module("main");
     let builder = context.create_builder();
     let mut variable_table:HashMap<String, IntVar> = HashMap::new();
-    let llvm = Llvm::new(&context, &module, &builder, &mut variable_table);
+    let llvm = Llvm::new(&context, module, builder, &mut variable_table);
     llvm.llvm(expr_list);
 }
 
@@ -164,6 +199,17 @@ impl Expr {
             Expr::Assign(e) => e.eval(),
             Expr::Print(e) => e.eval(),
             Expr::Nope => 0
+        }
+    }
+    fn name(&self) -> String {
+        match self {
+            Expr::Ident(e) => e.name,
+            Expr::Int(e) => type_of(e),
+            Expr::BinaryOp(e) => type_of(e),
+            Expr::Assign(e) => type_of(e),
+            Expr::Print(e) => type_of(e),
+            Expr::Nope => "None".to_string()
+            
         }
     }
 }
@@ -259,13 +305,22 @@ enum Data<'c> {
     //変数
     IntVar(Box<IntVar<'c>>),
     //即値
-    Int(i32),
+    Int(IntValue<'c>),
     String,
     Char,
     Float,
-    Bool
+    Bool,
+    None
 }
-
+impl Data<'_> {
+    fn eval(& self) -> IntValue {
+        match self {
+            Data::IntVar(e) => e.eval(),
+            Data::Int(e) => *e,
+            default => {std::process::exit(1);}
+        }
+    }
+}
 struct IntVar<'c> {
     ptr: PointerValue<'c>,
     value: IntValue<'c>
@@ -276,6 +331,9 @@ impl IntVar<'static> {
     }
     fn ptr(&self) -> PointerValue {
         self.ptr
+    }
+    fn eval(&self) -> IntValue {
+        self.value
     }
 }
 
