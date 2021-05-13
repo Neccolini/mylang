@@ -80,6 +80,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             }
         }
     }
+    #[allow(unused_mut)]
     fn eval_int_formula(&self, expr: Expr) -> BasicValueEnum {
         match expr {
             Expr::Int(e) => {
@@ -89,6 +90,27 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 let ptr = self.int_var_table.get(&e.name()).unwrap();
                 return self.builder.build_load(*ptr, &e.name());
                 
+            },
+            Expr::BinaryOp(e) => {
+                let left = self.eval_int_formula(e.left_expr).into_int_value();
+                let right = self.eval_int_formula(e.right_expr).into_int_value();
+                let mut ret_int_val: IntValue;
+                match e.kind {
+                    Kind::Plus => {
+                        ret_int_val = self.builder.build_int_add(left, right, "");
+                    },
+                    Kind::Minus => {
+                        ret_int_val = self.builder.build_int_sub(left, right, "");
+                    },
+                    Kind::Multi => {
+                        ret_int_val = self.builder.build_int_mul(left, right, "");
+                    },
+                    Kind::Divi => {
+                        ret_int_val = self.builder.build_int_unsigned_div(left, right, "");
+                    }
+                    _ => {std::process::exit(1);}
+                }
+                return BasicValueEnum::IntValue(ret_int_val);
             }
             _ => {
                 return BasicValueEnum::IntValue(self.context.i32_type().const_int(0, false));
@@ -137,11 +159,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
     fn declare_int(&self, name: String, val: IntValue) {
         let i32_type = self.context.i32_type();
-        //let i32_value = i32_type.const_int(val as u64, false);
         let int_ref: PointerValue = self.builder.build_alloca(i32_type, &name);
         let _ = self.builder.build_store(int_ref, val);
     }
-
+    #[allow(dead_code)]
     fn get_i32_from_int_value(int_val: IntValue) -> i32{
         let s = int_val.print_to_string().to_string();
         let vec:Vec<&str> = s.split_whitespace().collect();
@@ -162,7 +183,9 @@ pub fn create_compiler(expr_list: &Vec<Expr>) {
 fn type_of<T>(_: T) -> String{
     let a = std::any::type_name::<T>();
     return a.to_string();
-  }
+}
+
+#[allow(dead_code)]
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
 pub enum Kind {
     Lparen, Rparen, Plus, Minus, Multi, Divi, Equal, NotEq,
@@ -212,16 +235,7 @@ pub enum Expr {
     Nope
 }
 impl Expr {
-    pub fn eval(&self) -> i32 {
-        match self {
-            Expr::Int(e) => e.eval(),
-            Expr::BinaryOp(e) => e.eval(),
-            Expr::Ident(e) => e.eval(),
-            Expr::Assign(e) => e.eval(),
-            Expr::Print(e) => e.eval(),
-            Expr::Nope => 0
-        }
-    }
+
     fn name(&self) -> String {
         match self {
             Expr::Ident(e) => e.name(),
@@ -259,17 +273,6 @@ impl BinaryOp {
     pub fn new(kind: Kind, left_expr:Expr, right_expr: Expr)-> BinaryOp {
         BinaryOp {kind, left_expr, right_expr}
     }
-    pub fn eval(&self) -> i32 {
-        let right = self.right_expr.eval();
-        let left = self.left_expr.eval();
-        match self.kind {
-            Kind::Plus => left + right,
-            Kind::Minus => left - right,
-            Kind::Multi => left * right,
-            Kind::Divi => left / right,
-            _ => 0,
-        }
-    }
 }
 
 // Ident: 変数
@@ -282,14 +285,8 @@ impl Ident {
     pub fn new(name: String, kind: Kind) -> Ident {
         Ident {name, kind}
     }
-    fn eval(&self) -> i32 {
-        0
-    }
     fn name(&self) -> String {
         self.name.clone()
-    }
-    fn kind(&self) -> Kind {
-        self.kind
     }
 }
 
@@ -303,9 +300,6 @@ impl Assign {
     pub fn new(left_expr:Expr, right_expr: Expr) -> Assign {
         Assign {left_expr, right_expr}
     }
-    pub fn eval(&self) -> i32 {
-        0
-    }
 }
 
 
@@ -317,9 +311,6 @@ pub struct Print {
 impl Print {
     pub fn new(val: Expr) -> Print {
         Print { val }
-    }
-    pub fn eval(&self) -> i32 {
-        self.val.eval()
     }
 }
 
