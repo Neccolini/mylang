@@ -17,6 +17,7 @@ struct Llvm<'c> {
 
 impl<'c> Llvm<'c> {
     pub fn new(context: &'c Context, module: Module<'c>, builder: Builder<'c>, int_var_table: &'c mut HashMap<String, PointerValue<'c>>) -> Llvm<'c> {
+
         Llvm {context, module, builder, int_var_table }
 
     }
@@ -45,20 +46,19 @@ impl<'c> Llvm<'c> {
 
         i32_type
     }
-    fn llvm(&self, expr_list: &Vec<Expr>) {
+    fn llvm(&'static self, expr_list: &Vec<Expr>) {
         for expr in expr_list {
             self.expr_to_llvm_element(expr);
         }
     }
-    fn expr_to_llvm_element(& self, expr: &Expr) -> Data {
+    fn expr_to_llvm_element(&'static self, expr: &Expr) -> Data {
         match expr {
             Expr::Assign(e) => {
                 let left = &e.left_expr.clone();
                 let right = &e.right_expr.clone();
                 let leftname = left.name(); //Identのはず
-                let right_data = self.eval_int_formula(*right, false);
-                let rightval: IntValue = right_data.eval();
-                return self.declare_int(leftname, &rightval);
+                let right_data = self.eval_int_formula(right.clone(), false).eval();
+                return self.declare_int(leftname, &right_data);
             },
             Expr::Print(e) => {
                 let val = e.val.clone();
@@ -69,7 +69,7 @@ impl<'c> Llvm<'c> {
             }
         }
     }
-    fn eval_int_formula(&self, expr: Expr, is_left: bool) -> Data {
+    fn eval_int_formula(&'static self, expr: Expr, is_left: bool) -> Data {
         match expr {
             Expr::Int(e) => {
                 return self.const_int(e.eval());
@@ -108,24 +108,25 @@ impl<'c> Llvm<'c> {
             }
         }
     }
-    fn load_int(&self, name: String) -> Data {
+    fn load_int(&self, name: String) -> PointerValue {
         let data = *self.int_var_table.get(&name).unwrap(); // todo: match でerror処理すべき
         // build_loadして、取り出す命令を書く
-        self.builder.build_load(data.ptr, &name); // todo now
-        let int_var = Data::IntVar(Box::new(data));
-        return int_var;
-    }
-
-    fn declare_int(& self, name: String,  i32_value:  &'static IntValue) -> Data {
-        let const_int_ref:PointerValue = self.builder.build_alloca(self.context.i32_type(),&name);
-        let _ = self.builder.build_store(const_int_ref, *i32_value);
-        let int_var = IntVar::new(const_int_ref, *i32_value);
-        let data = Data::IntVar(Box::new(IntVar::new(const_int_ref, *i32_value)));
-        self.int_var_table.insert(name, int_var);
+        self.builder.build_load(data, &name); // todo now
+        // let int_var = Data::IntVar(Box::new(IntVar::new(data, )));
         return data;
     }
 
-    fn const_int(& self, val: i32) -> Data<'c> {
+    fn declare_int(&'static self, name: String,  i32_value:  &'static IntValue) -> Data {
+        let i32_type = self.context.i32_type();
+        let const_int_ref:PointerValue = self.builder.build_alloca(i32_type, &name);
+        let _ = self.builder.build_store(const_int_ref, *i32_value);
+        let int_var = IntVar::new(const_int_ref, *i32_value);
+        let data = Data::IntVar(Box::new(IntVar::new(const_int_ref, *i32_value)));
+        self.int_var_table.insert(name, const_int_ref);
+        return data;
+    }
+
+    fn const_int(&'static self, val: i32) -> Data<'static> {
         Data::Int(self.context.i32_type().const_int(val as u64, false))
     }
 }
@@ -137,8 +138,8 @@ pub fn create_llvm(expr_list: &Vec<Expr>) {
     let context = Context::create();
     let module = context.create_module("main");
     let builder = context.create_builder();
-    let mut variable_table:HashMap<String, IntVar> = HashMap::new();
-    let llvm = Llvm::new(&context, module, builder, &mut variable_table);
+    let mut variable_table:HashMap<String, PointerValue> = HashMap::new();
+    let llvm = Llvm::new(&context, module, builder,  &mut variable_table);
     llvm.llvm(expr_list);
 }
 
@@ -312,8 +313,9 @@ enum Data<'c> {
     Bool,
     None
 }
+
 impl Data<'_> {
-    fn eval(& self) -> IntValue {
+    fn eval(&'static self) -> IntValue {
         match self {
             Data::IntVar(e) => e.eval(),
             Data::Int(e) => *e,
