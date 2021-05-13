@@ -25,7 +25,7 @@ fn main() {
 
     let token_list = tokenizer::tokenize(&mut text.chars());
     let ast = parser::token_to_expr(&token_list);
-    compiler::create_llvm(&ast);
+    compiler::create_compiler(&ast);
 
 }
 
