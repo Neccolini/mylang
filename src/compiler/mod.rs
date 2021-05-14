@@ -9,15 +9,15 @@ pub mod parser;
 pub mod tokenizer;
 
 pub struct Compiler<'a, 'ctx> {
-    pub context: &'ctx Context,
+    pub context: &'ctx mut Context,
     pub builder: &'a Builder<'ctx>,
     pub module: &'a Module<'ctx>,
     expr_list: &'a Vec<Expr>,
-    var_table: &'a HashMap<String, PointerValue<'a>>,
+    var_table: &'a mut HashMap<String, PointerValue<'a>>,
 }
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    pub fn new(context: &'ctx Context, builder: &'a Builder<'ctx>, module: &'a Module<'ctx>, expr_list: &'a Vec<Expr>, var_table: &'a HashMap<String, PointerValue<'a>>) {
+    pub fn new(context: &'ctx mut Context, builder: &'a Builder<'ctx>, module: &'a Module<'ctx>, expr_list: &'a Vec<Expr>, var_table: &'a mut HashMap<String, PointerValue<'a>> ) {
         let compiler = Compiler {
             context,
             builder,
@@ -29,7 +29,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         compiler.compile();
     }
 
-    pub fn compile(&self) {
+    pub fn compile(&mut self) {
         let i32_type = self.context.i32_type();
         let function_type = i32_type.fn_type(&[], false);
 
@@ -50,28 +50,30 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let _result = self.module.print_to_file("main.ll");
         self.execute()
     }
-    fn llvm(&self) {
+    fn llvm(&mut self) {
         for expr in self.expr_list {
             self.ast_to_llvm(expr);
         }
     }
-    fn ast_to_llvm(&self, ast: &Expr) {
+    fn ast_to_llvm(&mut self, ast: &Expr) {
         match ast {
             Expr::Assign(e) => {
                 let left = e.left_expr.clone().name();
                 match e.left_expr.clone() {
                     Expr::Int(i) => {
                         let right = self.eval_int_formula(e.right_expr.clone());
-                        self.declare_int(left, right.into_int_value());
+                        let ptr = self.declare_int(left.clone(), right.into_int_value());
+                        self.var_table.insert(left, ptr);
                     },
                     Expr::Char(c) => {
                         let right = self.eval_char(e.right_expr.clone());
-                        self.declare_int(left, right.into_int_value());
+                        let ptr = self.declare_int(left.clone(), right.into_int_value());
+                        self.var_table.insert(left, ptr);
                     },
                     Expr::Str(s) => {
                         let string: &str = &s.eval();
                         let right = self.emit_global_string(&string, &left);
-                        // self.var_table.insert(left, right);
+                        self.var_table.insert(left, right);
                     }
                     _ => {
 
@@ -188,7 +190,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
     }
 
-    fn emit_global_string(&self, string: &&str, name: &str) -> PointerValue {
+    fn emit_global_string(&self, string: &&str, name: &str) -> PointerValue<'a> {
         let ty = self.context.i8_type().array_type(string.len() as u32);
         let gv = self.module.add_global(ty, Some(AddressSpace::Generic), name);
         gv.set_linkage(Linkage::Internal);
@@ -202,10 +204,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         pointer_value
     }
-    fn declare_int(&self, name: String, val: IntValue) {
+    fn declare_int(&self, name: String, val: IntValue) -> PointerValue<'a> {
         let i32_type = self.context.i32_type();
         let int_ref: PointerValue = self.builder.build_alloca(i32_type, &name);
         let _ = self.builder.build_store(int_ref, val);
+        int_ref
     }
 
     fn declare_char(&self, name:String, chr: IntValue) {
@@ -226,8 +229,8 @@ pub fn create_compiler(expr_list: &Vec<Expr>) {
     let context = Context::create();
     let module = context.create_module("repl");
     let builder = context.create_builder();
-    let var_table: HashMap<String, PointerValue> = HashMap::new();
-    Compiler::new(&context, &builder, &module, expr_list, &var_table);
+    let mut var_table: HashMap<String, PointerValue> = HashMap::new();
+    Compiler::new(&mut context, &builder, &module, expr_list, &mut var_table);
 }
 
 
