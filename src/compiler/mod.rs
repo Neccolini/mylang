@@ -17,7 +17,7 @@ pub struct Compiler<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    pub fn new(context: &'ctx mut Context, builder: &'a Builder<'ctx>, module: &'a Module<'ctx>, expr_list: &'a Vec<Expr>, var_table: &'a mut HashMap<String, PointerValue<'a>> ) {
+    pub fn new(context: &'ctx mut Context, builder: &'a Builder<'ctx>, module: &'ctx Module<'ctx>, expr_list: &'a Vec<Expr>, var_table: &'a mut HashMap<String, PointerValue<'a>> ) {
         let compiler = Compiler {
             context,
             builder,
@@ -29,7 +29,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         compiler.compile();
     }
 
-    pub fn compile(&mut self) {
+    pub fn compile(&'ctx mut self) {
         let i32_type = self.context.i32_type();
         let function_type = i32_type.fn_type(&[], false);
 
@@ -50,12 +50,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let _result = self.module.print_to_file("main.ll");
         self.execute()
     }
-    fn llvm(&mut self) {
+    fn llvm(&'ctx mut self) {
         for expr in self.expr_list {
             self.ast_to_llvm(expr);
         }
     }
-    fn ast_to_llvm(&mut self, ast: &Expr) {
+    fn ast_to_llvm(&'ctx mut self, ast: &Expr) {
         match ast {
             Expr::Assign(e) => {
                 let left = e.left_expr.clone().name();
@@ -165,7 +165,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             }
         }
     }
-    fn emit_printf_call(&self, hello_str: &&str, name: &str) {
+    fn emit_printf_call(&'ctx self, hello_str: &&str, name: &str) {
         let pointer_value = self.emit_global_string(hello_str, name);
         let func = self.module.get_function("puts");
         self.builder.build_call(func.unwrap(), &[pointer_value.into()], "");
@@ -190,21 +190,22 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
     }
 
-    fn emit_global_string(&self, string: &&str, name: &str) -> PointerValue<'a> {
-        let ty = self.context.i8_type().array_type(string.len() as u32);
+    fn emit_global_string(&'ctx self, string: &&str, name: &str) -> PointerValue<'a> {
+        let i8 = self.context.i8_type();
+        let ty = i8.array_type(string.len() as u32);
         let gv = self.module.add_global(ty, Some(AddressSpace::Generic), name);
         gv.set_linkage(Linkage::Internal);
         gv.set_initializer(&self.context.const_string(string.as_ref(), false));
 
         let pointer_value = self.builder.build_pointer_cast(
             gv.as_pointer_value(),
-            self.context.i8_type().ptr_type(AddressSpace::Generic),
+            i8.ptr_type(AddressSpace::Generic),
             name,
         );
 
         pointer_value
     }
-    fn declare_int(&self, name: String, val: IntValue) -> PointerValue<'a> {
+    fn declare_int(&'a self, name: String, val: IntValue) -> PointerValue<'a> {
         let i32_type = self.context.i32_type();
         let int_ref: PointerValue = self.builder.build_alloca(i32_type, &name);
         let _ = self.builder.build_store(int_ref, val);
