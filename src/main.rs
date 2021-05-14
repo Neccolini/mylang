@@ -1,9 +1,10 @@
 mod compiler;
 use compiler::*;
-
+use inkwell::context::Context;
+use std::cell::RefCell;
 use std::env;
 use std::fs;
-
+use compiler::Var;
 #[allow(dead_code)]
 fn main() {
 
@@ -31,7 +32,9 @@ fn main() {
     for expr in ast.clone() {
         println!("{:?}", expr);
     }
+    let context:Context = Context::create();
+    let var_table_cell: RefCell<Vec<Var>> = RefCell::new(Vec::new());
+    compiler::llvm(&context, &ast, &var_table_cell);
     
-    compiler::create_compiler(&ast);
 }
 
