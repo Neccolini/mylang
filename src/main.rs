@@ -24,8 +24,14 @@ fn main() {
     };
 
     let token_list = tokenizer::tokenize(&mut text.chars());
+    for token in token_list.clone() {
+        println!("{:?}", token);
+    }
     let ast = parser::token_to_expr(&token_list);
+    for expr in ast.clone() {
+        println!("{:?}", expr);
+    }
+    
     compiler::create_compiler(&ast);
-
 }
 

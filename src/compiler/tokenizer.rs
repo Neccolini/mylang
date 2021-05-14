@@ -67,6 +67,7 @@ pub fn tokenize(text: &mut Chars) -> Vec<Token> {
     let mut prev_ch = ' ';
     while true {
         tkn_res.push(next_tkn(text, &ch_list, &mut prev_ch));
+        println!("{:?}", tkn_res.last().unwrap().kind);
         if tkn_res.last().unwrap().kind == Kind::Endlist {
             break;
         }
@@ -84,6 +85,7 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
     if ch == '\0' {
         return Token { text: "".to_string(), chr:' ', kind: Kind::Endlist, val: 0 }
     }
+    println!("{}", ch);
     match ch_list[ch as usize] {
         Ch::Letter => {
             let mut s: String = "".to_string();
@@ -120,9 +122,11 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
         },
         Ch::SngQ => {
             let c: char = next_ch(text);
+            println!("char {}", c);
             if next_ch(text) != '\'' { parse_error("error at: SngQ ".to_string() + &ch.to_string()); }
             token.kind = Kind::Char;
             token.chr = c;
+            *prev_ch = next_ch(text);
         },
 
         Ch::DblQ => {
@@ -133,7 +137,7 @@ fn next_tkn(text: &mut Chars, ch_list:&[Ch;256], prev_ch: &mut char) -> Token {
                 ch = next_ch(text);
                 if ch == '\0' { parse_error("error at: DblQ ".to_string() + &ch.to_string());  }
             }
-            token.kind = Kind::String;
+            token.kind = Kind::Str;
             token.text = s;
             *prev_ch = next_ch(text);
         },

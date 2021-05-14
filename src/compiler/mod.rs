@@ -13,17 +13,17 @@ pub struct Compiler<'a, 'ctx> {
     pub builder: &'a Builder<'ctx>,
     pub module: &'a Module<'ctx>,
     expr_list: &'a Vec<Expr>,
-    int_var_table: &'a HashMap<String, PointerValue<'a>>
+    var_table: &'a HashMap<String, PointerValue<'a>>,
 }
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    pub fn new(context: &'ctx Context, builder: &'a Builder<'ctx>, module: &'a Module<'ctx>, expr_list: &'a Vec<Expr>, int_var_table: &'a HashMap<String, PointerValue<'a>>) {
+    pub fn new(context: &'ctx Context, builder: &'a Builder<'ctx>, module: &'a Module<'ctx>, expr_list: &'a Vec<Expr>, var_table: &'a HashMap<String, PointerValue<'a>>) {
         let compiler = Compiler {
             context,
             builder,
             module,
             expr_list,
-            int_var_table
+            var_table
         };
 
         compiler.compile();
@@ -37,8 +37,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let basic_block = self.context.append_basic_block(function, "entrypoint");
         let str_type = self.context.i8_type().ptr_type(AddressSpace::Generic);
         let printf_type = i32_type.fn_type(&[str_type.into()], true);
+        let putchar_type = i32_type.fn_type(&[i32_type.into()], false);
 
         self.module.add_function("puts", printf_type, Some(Linkage::External));
+        self.module.add_function("putchar", putchar_type, None);
         self.builder.position_at_end(basic_block);
 
         //let i32_type = self.emit_printf_call(&"hello, world!\n", "hello");
@@ -57,12 +59,32 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         match ast {
             Expr::Assign(e) => {
                 let left = e.left_expr.clone().name();
-                let right = self.eval_int_formula(e.right_expr.clone());
-                self.declare_int(left, right.into_int_value());
+                match e.left_expr.clone() {
+                    Expr::Int(i) => {
+                        let right = self.eval_int_formula(e.right_expr.clone());
+                        self.declare_int(left, right.into_int_value());
+                    },
+                    Expr::Char(c) => {
+                        let right = self.eval_char(e.right_expr.clone());
+                        self.declare_int(left, right.into_int_value());
+                    },
+                    Expr::Str(s) => {
+                        let string: &str = &s.eval();
+                        let right = self.emit_global_string(&string, &left);
+                        // self.var_table.insert(left, right);
+                    }
+                    _ => {
+
+                    }
+                }
+
             },
             Expr::Print(e) => {
                 let val = e.val.clone();
                 match val {
+                    Expr::Ident(_) => {
+
+                    }
                     Expr::Int(_) | Expr::BinaryOp(_) => {
                         let int_val = self.eval_int_formula(val).into_int_value();
                         let s = int_val.print_to_string().to_string();
@@ -70,8 +92,20 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                         let s_to_print:&str = &(vec[1].to_string() + "\0");
                         self.emit_printf_call(&s_to_print, "int");
                     },
+                    Expr::Char(_) => {
+                        let char_val = self.eval_char(val).into_int_value();
+                        let s = self.get_int_from_int_value(char_val);
+                        let fun = self.module.get_function("putchar");
+                        self.builder.build_call(fun.unwrap(), &[self.context.i32_type().const_int(s as u64, false).into()], "putchar");
+                        self.builder.build_call(fun.unwrap(), &[self.context.i32_type().const_int('\n' as u64, false).into()], "putchar");
+                    },
+                    Expr::Str(s) => {
+                        // emit_global_stringでstringを出力する
+                        let string:&str = &s.eval();
+                        self.emit_printf_call(&string, "");
+                    }
                     _ => {
-
+                    
                     }
                 }
             },
@@ -87,7 +121,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 return BasicValueEnum::IntValue(self.context.i32_type().const_int(e.eval() as u64, false));
             },
             Expr::Ident(e) => {
-                let ptr = self.int_var_table.get(&e.name()).unwrap();
+                println!("called {}", e.name);
+                let ptr = self.var_table.get(&e.name()).unwrap();
                 return self.builder.build_load(*ptr, &e.name());
                 
             },
@@ -117,7 +152,17 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             }
         }
     }
-
+    fn eval_char(&self, expr: Expr) -> BasicValueEnum {
+        match expr {
+            Expr::Char(c) => {
+                return BasicValueEnum::IntValue(self.context.i8_type().const_int(c.eval() as u64, false));
+            },
+            _ => {
+                println!("error: char");
+                std::process::exit(1);
+            }
+        }
+    }
     fn emit_printf_call(&self, hello_str: &&str, name: &str) {
         let pointer_value = self.emit_global_string(hello_str, name);
         let func = self.module.get_function("puts");
@@ -162,8 +207,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let int_ref: PointerValue = self.builder.build_alloca(i32_type, &name);
         let _ = self.builder.build_store(int_ref, val);
     }
-    #[allow(dead_code)]
-    fn get_i32_from_int_value(int_val: IntValue) -> i32{
+
+    fn declare_char(&self, name:String, chr: IntValue) {
+        let i8_type = self.context.i8_type();
+        let char_ref: PointerValue = self.builder.build_alloca(i8_type, &name);
+        let _ = self.builder.build_store(char_ref, chr);
+    }
+
+    fn get_int_from_int_value(&self, int_val: IntValue) -> i32{
         let s = int_val.print_to_string().to_string();
         let vec:Vec<&str> = s.split_whitespace().collect();
         let val: i32 = vec[1].parse().unwrap();
@@ -175,8 +226,8 @@ pub fn create_compiler(expr_list: &Vec<Expr>) {
     let context = Context::create();
     let module = context.create_module("repl");
     let builder = context.create_builder();
-    let int_var_table: HashMap<String, PointerValue> = HashMap::new();
-    Compiler::new(&context, &builder, &module, expr_list, &int_var_table);
+    let var_table: HashMap<String, PointerValue> = HashMap::new();
+    Compiler::new(&context, &builder, &module, expr_list, &var_table);
 }
 
 
@@ -191,7 +242,7 @@ pub enum Kind {
     Lparen, Rparen, Plus, Minus, Multi, Divi, Equal, NotEq,
     Less, LessEq, Greater, GreaterEq, SngQ, DblQ, Assign, Semicolon,
     If, Else, Print, Ident, Int,
-    String, Letter, Digit, Nulkind, EofTkn, Others, Endlist,
+    Str, Letter, Digit, Nulkind, EofTkn, Others, Endlist,
     Lbrace, Rbrace, Char, Nyaan, Addasgn, Mnuasgn, Multiasgn, Divasgn
 }
 
@@ -232,6 +283,8 @@ pub enum Expr {
     Ident(Box<Ident>),
     Assign(Box<Assign>),
     Print(Box<Print>),
+    Char(Char),
+    Str(Str),
     Nope
 }
 impl Expr {
@@ -243,6 +296,8 @@ impl Expr {
             Expr::BinaryOp(e) => type_of(e),
             Expr::Assign(e) => type_of(e),
             Expr::Print(e) => type_of(e),
+            Expr::Char(e) => type_of(e),
+            Expr::Str(e) => type_of(e),
             Expr::Nope => "None".to_string()
             
         }
@@ -259,6 +314,30 @@ impl Int {
     }
     fn eval(&self) -> i32 {
         self.0
+    }
+}
+
+// Char: char
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Char(char);
+impl Char {
+    pub fn new(val: char) -> Char {
+        Char(val)
+    }
+    fn eval(&self) -> char {
+        self.0
+    }
+}
+
+// String: string
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Str(String);
+impl Str {
+    pub fn new(val: String) -> Str {
+        Str(val)
+    }
+    fn eval(&self) -> String {
+        self.0.clone()
     }
 }
 

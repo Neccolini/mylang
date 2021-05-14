@@ -43,7 +43,6 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>, 
             return assign;
         },
         Kind::Print => {
-            
             next_tkn(&cell_token, index, token_list);
             check_tkn(&cell_token, index, token_list, Kind::Lparen, "( is missing for print function".to_string(), true);
             expression(&cell_token, index, token_list, stack, id_map);
@@ -103,8 +102,13 @@ fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'
             next_tkn(cell_token, index, token_list);
             expression(cell_token, index, token_list, stack, id_map);
             check_tkn(cell_token, index, token_list, Kind::Rparen, ") is missing".to_string(), false);
-            
         },
+        Kind::Char => {
+            stack.push(Expr::Char(Char::new(token.chr)));
+        },
+        Kind::Str => {
+            stack.push(Expr::Str(Str::new(token.text.clone())));
+        }
         _ => {
             
         }
