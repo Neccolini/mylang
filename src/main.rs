@@ -1,7 +1,5 @@
 mod compiler;
 use compiler::*;
-use inkwell::context::Context;
-use std::cell::RefCell;
 use std::env;
 use std::fs;
 
@@ -32,8 +30,7 @@ fn main() {
     for expr in ast.clone() {
         println!("{:?}", expr);
     }
-    let context:Context = Context::create();
-
+    compiler::generate(&ast);
     
 }
 

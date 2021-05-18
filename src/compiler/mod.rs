@@ -2,20 +2,21 @@ pub mod parser;
 pub mod tokenizer;
 
 use inkwell::{context::Context};
-use inkwell::builder::Builder;
 use inkwell::{AddressSpace};
-use inkwell::module::{Linkage, Module};
+use inkwell::module::{Linkage};
 use inkwell::values::{IntValue, PointerValue, BasicValueEnum};
-use inkwell::OptimizationLevel;
-use std::{collections::HashMap, fmt::Pointer};
-use inkwell::values::IntMathValue;
+use std::{collections::HashMap};
+use std::cell::{RefCell, Cell};
 
+#[allow(unused_mut)]
+#[allow(non_camel_case_types)]
+#[allow(unused_assignments)]
 pub fn generate(ast: &Vec<Expr>) {
     let context = Context::create();
     let module = context.create_module("main");
     let builder = context.create_builder();
     let i32_type = context.i32_type();
-    let var_table: HashMap<String, PointerValue> = HashMap::new();
+    let mut var_table_cell: RefCell<HashMap<String, PointerValue>> = RefCell::new(HashMap::new());
     let putchar_type = i32_type.fn_type(&[i32_type.into()], false);
     let str_type = context.i8_type().ptr_type(AddressSpace::Generic);
     let printf_type = i32_type.fn_type(&[str_type.into()], true);
@@ -27,16 +28,23 @@ pub fn generate(ast: &Vec<Expr>) {
     let basic_block = context.append_basic_block(function, "entry");
     builder.position_at_end(basic_block);
 
-    let mut ret_int_val: IntValue = context.i32_type().const_int(0, false);
-    let mut a:BasicValueEnum = BasicValueEnum::IntValue(ret_int_val);
-    struct Eval_Int_Formula<'s>{ f: &'s mut dyn FnMut(&mut Eval_Int_Formula, Expr) -> BasicValueEnum<'s> }
-    let mut eval_int_formula= Eval_Int_Formula {
-        f: &mut |eval_int_formula, expr| -> BasicValueEnum {
+    let get_int_from_int_val = |int_val: IntValue| -> i32{
+        let s = int_val.print_to_string().to_string();
+        let vec:Vec<&str> = s.split_whitespace().collect();
+        let val: i32 = vec[1].parse().unwrap();
+        val
+    };
+    let int_cell: Cell<BasicValueEnum> = Cell::new(BasicValueEnum::IntValue(context.i32_type().const_int(0, false)));
+    struct Eval_Int_Formula<'s>{ f: &'s dyn Fn(&Eval_Int_Formula, Expr) }
+    let eval_int_formula= Eval_Int_Formula {
+        f: &|eval_int_formula, expr| {
+            
             match expr {
                 Expr::Int(e) => {
-                    return BasicValueEnum::IntValue(context.i32_type().const_int(e.eval() as u64, false));
+                    int_cell.set(BasicValueEnum::IntValue(context.i32_type().const_int(e.eval() as u64, false)));
                 },
                 Expr::Ident(e) => {
+                    let mut var_table = var_table_cell.borrow_mut();
                     let ptr = match var_table.get(&e.name) {
                         None => {
                             println!("error: {} not found", e.name());
@@ -44,38 +52,45 @@ pub fn generate(ast: &Vec<Expr>) {
                         },
                         Some(v) => v
                     };
-                    return builder.build_load(*ptr, &e.name());
+                    int_cell.set(builder.build_load(*ptr, &e.name()));
                 },
                 Expr::BinaryOp(e) => {
-                    let left = (eval_int_formula.f)(eval_int_formula, e.left_expr).into_int_value();
-                    let right = (eval_int_formula.f)(eval_int_formula, e.right_expr).into_int_value();
+                    (eval_int_formula.f)(&eval_int_formula, e.left_expr);
+                    let left = int_cell.get().into_int_value();
+                    (eval_int_formula.f)(&eval_int_formula, e.right_expr);
+                    let right = int_cell.get().into_int_value();
+                    let mut ret_int_val:IntValue = context.i32_type().const_int(0, false);
                     match e.kind {
                         Kind::Plus => {
                             ret_int_val = builder.build_int_add(left, right, "");
                         },
                         Kind::Minus => {
                             ret_int_val = builder.build_int_sub(left, right, "");
+                            //x = get_int_from_int_val(left) - get_int_from_int_val(right);
                         },
                         Kind::Multi => {
                             ret_int_val = builder.build_int_mul(left, right, "");
+                            //x = get_int_from_int_val(left) * get_int_from_int_val(right);
                         },
                         Kind::Divi => {
                             ret_int_val = builder.build_int_unsigned_div(left, right, "");
+                            //x = get_int_from_int_val(left) / get_int_from_int_val(right);
                         }
                         _ => {std::process::exit(1);}
                     }
-                    return BasicValueEnum::IntValue(ret_int_val);
+                    
+                    int_cell.set(BasicValueEnum::IntValue(ret_int_val));
                 }
                 _ => {
-                    return BasicValueEnum::IntValue(context.i32_type().const_int(0, false));
+                    int_cell.set(BasicValueEnum::IntValue(context.i32_type().const_int(0, false)));
                 }
-            }
+            };
         }
     };
 
 
 
-    let mut eval_char = |expr:&Expr|{
+    let eval_char = |expr:&Expr|{
         match expr {
             Expr::Char(c) => {
                 return BasicValueEnum::IntValue(context.i32_type().const_int(c.eval() as u64, false));
@@ -88,14 +103,14 @@ pub fn generate(ast: &Vec<Expr>) {
     };
 
 
-    let mut declare_int = |name: String, val: IntValue| -> PointerValue{
+    let declare_int = |name: String, val: IntValue| -> PointerValue{
         let i32_type = context.i32_type();
         let int_ref: PointerValue = builder.build_alloca(i32_type, &name);
         let _ = builder.build_store(int_ref, val);
         int_ref
     };
 
-    let mut emit_global_string = |string: &&str, name: &str|{
+    let emit_global_string = |string: &&str, name: &str|{
         let i8 = context.i8_type();
         let ty = i8.array_type(string.len() as u32);
         let gv = module.add_global(ty, Some(AddressSpace::Generic), name);
@@ -110,37 +125,34 @@ pub fn generate(ast: &Vec<Expr>) {
 
         pointer_value
     };
-    let mut emit_printf_call = |string: &&str, name: &str|{
+    let emit_printf_call = |string: &&str, name: &str|{
         let pointer_value = emit_global_string( string, name);
         let func = module.get_function("puts");
         builder.build_call(func.unwrap(), &[pointer_value.into()], "");
 
     };
-    let mut get_int_from_int_val = |int_val: IntValue| -> i32{
-        let s = int_val.print_to_string().to_string();
-        let vec:Vec<&str> = s.split_whitespace().collect();
-        let val: i32 = vec[1].parse().unwrap();
-        val
-    };
-    let mut ast_to_llvm = |ast: &Expr| {
+
+    let ast_to_llvm = |ast: &Expr| {
         match ast {
         Expr::Assign(e) => {
             let left = e.left_expr.clone().name();
             match e.right_expr.clone() {
-                Expr::Int(i) => {
-                    let right = (eval_int_formula.f)(&mut eval_int_formula, e.right_expr.clone());
-                    let ptr = declare_int(left, right.into_int_value());
-                    //var_table_cell.borrow_mut().push(Var::new(left, ptr));
+                Expr::Int(_) => {
+                    (eval_int_formula.f)(&eval_int_formula, e.right_expr.clone());
+                    let right = int_cell.get();
+                    let ptr = declare_int(left.clone(), right.into_int_value());
+                    var_table_cell.borrow_mut().insert(left, ptr);
+                   
                 },
-                Expr::Char(c) => {
+                Expr::Char(_) => {
                     let right = eval_char(&e.right_expr.clone());
-                    let ptr = declare_int(left, right.into_int_value());
-                    //var_table_cell.borrow_mut().push(Var::new(left, ptr));
+                    let ptr = declare_int(left.clone(), right.into_int_value());
+                    var_table_cell.borrow_mut().insert(left, ptr);
                 },
                 Expr::Str(s) => {
                     let string: &str = &s.eval();
                     let ptr = emit_global_string(&string, &left);
-                    //var_table_cell.borrow_mut().push(Var::new(left, ptr));
+                    var_table_cell.borrow_mut().insert(left, ptr);
                 }
                 _ => {
 
@@ -155,7 +167,8 @@ pub fn generate(ast: &Vec<Expr>) {
 
                 }
                 Expr::Int(_) | Expr::BinaryOp(_) => {
-                    let int_val = (eval_int_formula.f)(&mut eval_int_formula, val).into_int_value();
+                    (eval_int_formula.f)(&eval_int_formula, val);
+                    let int_val = int_cell.get().into_int_value();
                     let s = int_val.print_to_string().to_string();
                     let vec:Vec<&str> = s.split_whitespace().collect();
                     let s_to_print:&str = &(vec[1].to_string() + "\0");
