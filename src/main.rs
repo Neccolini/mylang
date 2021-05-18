@@ -27,9 +27,12 @@ fn main() {
         println!("{:?}", token);
     }
     let ast = parser::token_to_expr(&token_list);
+    
+    
     for expr in ast.clone() {
         println!("{:?}", expr);
     }
+    
     compiler::generate(&ast);
     
 }

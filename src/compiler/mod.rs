@@ -2,7 +2,7 @@ pub mod parser;
 pub mod tokenizer;
 
 use inkwell::{context::Context};
-use inkwell::{AddressSpace};
+use inkwell::{AddressSpace, IntPredicate};
 use inkwell::module::{Linkage};
 use inkwell::values::{IntValue, PointerValue, BasicValueEnum};
 use std::{collections::HashMap};
@@ -76,6 +76,19 @@ pub fn generate(ast: &Vec<Expr>) {
                     }
                     
                     int_cell.set(BasicValueEnum::IntValue(ret_int_val));
+                },
+                Expr::Equal(e) => {
+                    (eval_int_formula.f)(&eval_int_formula, e.left_expr);
+                    let left = int_cell.get().into_int_value();
+                    (eval_int_formula.f)(&eval_int_formula, e.right_expr);
+                    let right = int_cell.get().into_int_value();
+                    let success = builder.build_int_compare(
+                        IntPredicate::EQ,
+                        left,
+                        right,
+                        "success",
+                    );
+                    int_cell.set(BasicValueEnum::IntValue(success));
                 }
                 _ => {
                     int_cell.set(BasicValueEnum::IntValue(context.i32_type().const_int(0, false)));
@@ -179,7 +192,7 @@ pub fn generate(ast: &Vec<Expr>) {
                     };
                     print_int(ptr);
                 }
-                Expr::Int(_) | Expr::BinaryOp(_) => {
+                Expr::Int(_) | Expr::BinaryOp(_) | Expr::Equal(_)=> {
                     (eval_int_formula.f)(&eval_int_formula, val);
                     let int_val = int_cell.get().into_int_value();
                     let s = int_val.print_to_string().to_string();
@@ -204,6 +217,12 @@ pub fn generate(ast: &Vec<Expr>) {
                 }
             }
         },
+        Expr::If(i) => {
+            let condition = i.clone().condition;
+            
+            let list = i.clone().list;
+
+        }
         _ => {
             
         }
@@ -272,6 +291,7 @@ pub enum Expr {
     Char(Char),
     Str(Str),
     Equal(Box<Equal>),
+    If(Box<If>),
     Nope
 }
 impl Expr {
@@ -287,6 +307,7 @@ impl Expr {
             Expr::Char(e) => type_of(e),
             Expr::Str(e) => type_of(e),
             Expr::Equal(e) => type_of(e),
+            Expr::If(e) => type_of(e),
             Expr::Nope => "None".to_string()
             
         }
@@ -391,5 +412,17 @@ pub struct Equal {
 impl Equal {
     pub fn new(left_expr: Expr, right_expr: Expr) -> Equal {
         Equal {left_expr, right_expr}
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct If {
+    pub condition: Expr,
+    pub list: Vec<Expr>
+}
+impl If {
+    pub fn new(condition: Expr) -> If {
+        let list:Vec<Expr> = Vec::new();
+        If { condition, list }
     }
 }

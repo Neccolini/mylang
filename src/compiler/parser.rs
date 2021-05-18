@@ -31,7 +31,7 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) 
                 None => {parse_error("stack pop failed: stack is empty".to_string()); return Expr::Nope; },
                 Some(expr) => expr,
             };
-            let kind:Kind = match right_expr {
+            let kind: Kind = match right_expr {
                 Expr::Int(_) | Expr::BinaryOp(_) => {
                     Kind::Int
                 },
@@ -51,29 +51,58 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) 
                     right_expr.clone(),
             )));
             check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(), true);
-        
+            println!("now");
             return assign;
         },
         Kind::Print => {
             next_tkn(&cell_token, index, token_list);
             check_tkn(&cell_token, index, token_list, Kind::Lparen, "( is missing for print function".to_string(), true);
-            expression(&cell_token, index, token_list, stack);
+                expression(&cell_token, index, token_list, stack);
+                expression(&cell_token, index, token_list, stack);
             let print = Expr::Print(Box::new(Print::new(match stack.pop() {
                 None => {parse_error("print error; stack is empty".to_string()); return Expr::Nope; }, // todo error messageを変更
                 Some(expr) => expr
             })));
+            println!("{:?}", cell_token.get().kind);
             check_tkn(&cell_token, index, token_list, Kind::Rparen, ") is missing for print function".to_string(), true);
             check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(),true);
-            return print
+            return print;
         },
         Kind::If => {
+            next_tkn(&cell_token, index, token_list);
+            println!("now1{:?}", cell_token.get().kind);
             expression(&cell_token, index, token_list, stack);
-            let condition = stack.pop();
-            check_tkn(&cell_token, index, token_list, Kind::Lbrace, "{ is missing for if statement".to_string(), true);
-            
+            expression(&cell_token, index, token_list, stack); // Equal
+            next_tkn(&cell_token, index, token_list);
+            let condition = match stack.pop() {
+                None => {println!("error at if: parsing condition failed"); std::process::exit(1); },
+                Some(e) => e
+            };
+            println!("condition {:?}", condition);
+            println!("{:?}", cell_token.get().text);
+            //check_tkn(&cell_token, index, token_list, Kind::Lbrace, "{ is missing for if statement".to_string(), true);
+            let mut if_obj: If = If::new(condition);
+            let mut flag = true;
+            while flag {
+                let mut token_kind = cell_token.get().kind;
+                match token_kind {
+                    Kind::Rbrace => { flag = false; },
+                    Kind::Endlist => { println!("error: }} is missing for if statement"); std::process::exit(1); },
+                     _ => {},
+                };
+                let a = statement(index, token_list, stack);
+                if a == Expr::Nope {
+                    flag = false;
+                }
+                if_obj.list.push(a);
+
+            }
+            return Expr::If(Box::new(if_obj));
         }
         _ => {
-
+            println!("{:?}", cell_token.get().kind);
+            println!("????");
+            next_tkn(&cell_token, index, token_list);
         }
     }
     Expr::Nope
@@ -82,6 +111,7 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) 
 #[allow(unused_assignments)]
 fn expression<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>) {
     let mut op: Kind = Kind::Nulkind;
+    println!("path1 {:?}", cell_token.get().kind);
     term(cell_token, index, token_list, stack);
     let mut token: &Token = cell_token.get();
     while token.kind == Kind::Plus || token.kind == Kind::Minus {
@@ -96,6 +126,7 @@ fn expression<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list:
 #[allow(unused_assignments)]
 fn term<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>) {
     let mut op: Kind = Kind::Nulkind;
+    println!("path2{:?}", cell_token.get().kind);
     factor(cell_token, index, token_list, stack);
     let mut token: &Token = cell_token.get();
     while token.kind == Kind::Multi || token.kind == Kind::Divi {
@@ -109,20 +140,25 @@ fn term<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a 
 
 fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>, stack: &mut Vec<Expr>) {
     let token: &Token = cell_token.get();
+    println!("path3 {:?}", token.kind);
     match token.kind {
         Kind::Ident => {
             //stack.push(id_map[&token.text].clone());
             let expr = Expr::Ident(Box::new(Ident::new(token.text.clone(), token.kind)));
             stack.push(expr);
+            println!("{}", stack.len());
         },
         Kind::Int => {
             stack.push(Expr::Int(Int::new(token.val)));
         },
         Kind::Equal => {
+            println!("path");
             let left = stack.pop().unwrap();
+            next_tkn(cell_token, index, token_list);
             expression(cell_token, index, token_list, stack);
             let right = stack.pop().unwrap();
             stack.push(Expr::Equal(Box::new(Equal::new(left, right))));
+            return;
         }
         Kind::Lparen => {
             next_tkn(cell_token, index, token_list);
@@ -134,7 +170,7 @@ fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'
         },
         Kind::Str => {
             stack.push(Expr::Str(Str::new(token.text.clone())));
-        }
+        },
         _ => {
             
         }
@@ -156,6 +192,10 @@ fn check_tkn<'a>(cell_token:&'a Cell<&'a Token>, index: &mut usize, token_list: 
 
 #[allow(unused_assignments)]
 fn next_tkn<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'a Vec<Token>) {
+    if *index >= token_list.len() {
+        println!("overflow");
+        std::process::exit(1);
+    }
     let mut token = cell_token.get();
     *index += 1;
     token = match token_list.get(*index) {
