@@ -22,7 +22,7 @@ pub fn generate(ast: &Vec<Expr>) {
     let printf_type = i32_type.fn_type(&[str_type.into()], true);
     module.add_function("puts", printf_type, Some(Linkage::External));
     module.add_function("putchar", putchar_type, None);
-
+    module.add_function("printf", printf_type, Some(Linkage::External));
     let main_type = i32_type.fn_type(&[], false);
     let function = module.add_function("main", main_type, None);
     let basic_block = context.append_basic_block(function, "entry");
@@ -38,7 +38,6 @@ pub fn generate(ast: &Vec<Expr>) {
     struct Eval_Int_Formula<'s>{ f: &'s dyn Fn(&Eval_Int_Formula, Expr) }
     let eval_int_formula= Eval_Int_Formula {
         f: &|eval_int_formula, expr| {
-            
             match expr {
                 Expr::Int(e) => {
                     int_cell.set(BasicValueEnum::IntValue(context.i32_type().const_int(e.eval() as u64, false)));
@@ -66,17 +65,14 @@ pub fn generate(ast: &Vec<Expr>) {
                         },
                         Kind::Minus => {
                             ret_int_val = builder.build_int_sub(left, right, "");
-                            //x = get_int_from_int_val(left) - get_int_from_int_val(right);
                         },
                         Kind::Multi => {
                             ret_int_val = builder.build_int_mul(left, right, "");
-                            //x = get_int_from_int_val(left) * get_int_from_int_val(right);
                         },
                         Kind::Divi => {
                             ret_int_val = builder.build_int_unsigned_div(left, right, "");
-                            //x = get_int_from_int_val(left) / get_int_from_int_val(right);
                         }
-                        _ => {std::process::exit(1);}
+                        _ => { std::process::exit(1); }
                     }
                     
                     int_cell.set(BasicValueEnum::IntValue(ret_int_val));
@@ -131,18 +127,30 @@ pub fn generate(ast: &Vec<Expr>) {
         builder.build_call(func.unwrap(), &[pointer_value.into()], "");
 
     };
+    let print_int = |ptr: PointerValue| {
+        let str_ptr = emit_global_string(&"%d\n\0", "");
+        let ptr2 = builder.build_load(ptr, "");
+        let func = module.get_function("printf");
+        builder.build_call(func.unwrap(), &[str_ptr.into(), ptr2.into()], "");
+    };
 
+    /* 
+    let print_char = |ptr: PointerValue| {
+        let func = module.get_function("putchar");
+        builder.build_call(func.unwrap(), &[ptr.into()], "");
+    };
+    */
     let ast_to_llvm = |ast: &Expr| {
+        
         match ast {
         Expr::Assign(e) => {
             let left = e.left_expr.clone().name();
             match e.right_expr.clone() {
-                Expr::Int(_) => {
+                Expr::Int(_) | Expr::BinaryOp(_)=> {
                     (eval_int_formula.f)(&eval_int_formula, e.right_expr.clone());
                     let right = int_cell.get();
                     let ptr = declare_int(left.clone(), right.into_int_value());
                     var_table_cell.borrow_mut().insert(left, ptr);
-                   
                 },
                 Expr::Char(_) => {
                     let right = eval_char(&e.right_expr.clone());
@@ -153,7 +161,7 @@ pub fn generate(ast: &Vec<Expr>) {
                     let string: &str = &s.eval();
                     let ptr = emit_global_string(&string, &left);
                     var_table_cell.borrow_mut().insert(left, ptr);
-                }
+                },
                 _ => {
 
                 }
@@ -164,7 +172,12 @@ pub fn generate(ast: &Vec<Expr>) {
             let val = e.val.clone();
             match val {
                 Expr::Ident(_) => {
-
+                    let var_table = var_table_cell.borrow();
+                    let ptr = match var_table.get(&e.val.name()) {
+                        None => {println!("error {} not found", e.val.name()); std::process::exit(1); },
+                        Some(p) => *p
+                    };
+                    print_int(ptr);
                 }
                 Expr::Int(_) | Expr::BinaryOp(_) => {
                     (eval_int_formula.f)(&eval_int_formula, val);
@@ -258,6 +271,7 @@ pub enum Expr {
     Print(Box<Print>),
     Char(Char),
     Str(Str),
+    Equal(Box<Equal>),
     Nope
 }
 impl Expr {
@@ -272,6 +286,7 @@ impl Expr {
             Expr::Print(e) => type_of(e),
             Expr::Char(e) => type_of(e),
             Expr::Str(e) => type_of(e),
+            Expr::Equal(e) => type_of(e),
             Expr::Nope => "None".to_string()
             
         }
@@ -287,7 +302,7 @@ impl Int {
         Int(val)
     }
     fn eval(&self) -> i32 {
-        0
+        self.0
     }
 }
 
@@ -367,3 +382,14 @@ impl Print {
     }
 }
 
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Equal {
+    pub left_expr: Expr,
+    pub right_expr: Expr,
+}
+impl Equal {
+    pub fn new(left_expr: Expr, right_expr: Expr) -> Equal {
+        Equal {left_expr, right_expr}
+    }
+}

@@ -22,22 +22,36 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) 
     match token.kind {
         Kind::Ident => { // todo 変数宣言の宣言(letなど)を認識
             let variable_name: String = token.text.clone();
-            // ここでexpr::Identをstackにpush 今回は変数宣言だけでstackは使わない？
-            let ident = Expr::Ident(Box::new(Ident::new(variable_name.clone(), Kind::Int)));
+            
             next_tkn(&cell_token, index, token_list);
             check_tkn(&cell_token, index, token_list, Kind::Assign, "= is missing".to_string(), true); // todo Addasgn などに対応させる
-            // ここでExpr::Assignを宣言 left->先程のexpr::Ident, right->expressionの返り値？
+
             expression(&cell_token, index, token_list, stack);
             let right_expr = match stack.pop() {
                 None => {parse_error("stack pop failed: stack is empty".to_string()); return Expr::Nope; },
                 Some(expr) => expr,
             };
+            let kind:Kind = match right_expr {
+                Expr::Int(_) | Expr::BinaryOp(_) => {
+                    Kind::Int
+                },
+                Expr::Char(_) => {
+                    Kind::Char
+                }
+                Expr::Str(_) => {
+                    Kind::Str
+                }
+                _ => {
+                    std::process::exit(1);
+                }
+            };
+            let ident = Expr::Ident(Box::new(Ident::new(variable_name.clone(), kind)));
             let assign: Expr = Expr::Assign(Box::new(Assign::new(
                     ident, 
                     right_expr.clone(),
             )));
             check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(), true);
-            // id_map.insert(variable_name, right_expr);
+        
             return assign;
         },
         Kind::Print => {
@@ -51,6 +65,12 @@ fn statement(index: &mut usize, token_list: &Vec<Token>, stack: &mut Vec<Expr>) 
             check_tkn(&cell_token, index, token_list, Kind::Rparen, ") is missing for print function".to_string(), true);
             check_tkn(&cell_token, index, token_list, Kind::Semicolon, "; is missing".to_string(),true);
             return print
+        },
+        Kind::If => {
+            expression(&cell_token, index, token_list, stack);
+            let condition = stack.pop();
+            check_tkn(&cell_token, index, token_list, Kind::Lbrace, "{ is missing for if statement".to_string(), true);
+            
         }
         _ => {
 
@@ -98,6 +118,12 @@ fn factor<'a>(cell_token: &'a Cell<&'a Token>, index: &mut usize, token_list: &'
         Kind::Int => {
             stack.push(Expr::Int(Int::new(token.val)));
         },
+        Kind::Equal => {
+            let left = stack.pop().unwrap();
+            expression(cell_token, index, token_list, stack);
+            let right = stack.pop().unwrap();
+            stack.push(Expr::Equal(Box::new(Equal::new(left, right))));
+        }
         Kind::Lparen => {
             next_tkn(cell_token, index, token_list);
             expression(cell_token, index, token_list, stack);
