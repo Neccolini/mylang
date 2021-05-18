@@ -1,159 +1,81 @@
+pub mod parser;
+pub mod tokenizer;
+
 use inkwell::{context::Context};
 use inkwell::builder::Builder;
 use inkwell::{AddressSpace};
 use inkwell::module::{Linkage, Module};
 use inkwell::values::{IntValue, PointerValue, BasicValueEnum};
 use inkwell::OptimizationLevel;
-pub mod parser;
-pub mod tokenizer;
-use std::cell::RefCell;
-pub struct Var<'c> {
-    name: String,
-    ptr: PointerValue<'c>
-}
-impl Var<'_> {
-    fn new(name: String, ptr: PointerValue) -> Var{
-        Var {name, ptr}
-    }
-}
-    pub fn llvm<'ctx>(context: &'ctx Context, expr_list: &Vec<Expr>, var_table_cell: &'ctx RefCell<Vec<Var<'ctx>>>) {
-        let module = context.create_module("repl");
-        let builder = context.create_builder();
-        //let mut var_table_cell: HashMap<String, PointerValue> = HashMap::new();
-        let var_table_cell: RefCell<Vec<Var>> = RefCell::new(Vec::new());
+use std::{collections::HashMap, fmt::Pointer};
+use inkwell::values::IntMathValue;
 
-        let i32_type = context.i32_type();
-        let function_type = i32_type.fn_type(&[], false);
+pub fn generate(ast: &Vec<Expr>) {
+    let context = Context::create();
+    let module = context.create_module("main");
+    let builder = context.create_builder();
+    let i32_type = context.i32_type();
+    let var_table: HashMap<String, PointerValue> = HashMap::new();
+    let putchar_type = i32_type.fn_type(&[i32_type.into()], false);
+    let str_type = context.i8_type().ptr_type(AddressSpace::Generic);
+    let printf_type = i32_type.fn_type(&[str_type.into()], true);
+    module.add_function("puts", printf_type, Some(Linkage::External));
+    module.add_function("putchar", putchar_type, None);
 
-        let function = module.add_function("main", function_type, None);
-        let basic_block = context.append_basic_block(function, "entrypoint");
-        let str_type = context.i8_type().ptr_type(AddressSpace::Generic);
-        let printf_type = i32_type.fn_type(&[str_type.into()], true);
-        let putchar_type = i32_type.fn_type(&[i32_type.into()], false);
+    let main_type = i32_type.fn_type(&[], false);
+    let function = module.add_function("main", main_type, None);
+    let basic_block = context.append_basic_block(function, "entry");
+    builder.position_at_end(basic_block);
 
-        module.add_function("puts", printf_type, Some(Linkage::External));
-        module.add_function("putchar", putchar_type, None);
-        builder.position_at_end(basic_block);
-
-        
-        for expr in expr_list {
-            ast_to_llvm(expr, &context, &builder, &module, &var_table_cell);
-        }
-
-        builder.build_return(Some(&i32_type.const_int(0, false)));
-
-        let _result = module.print_to_file("main.ll");
-        // execute(context, builder, module, var_table_cell);
-    }
-    fn ast_to_llvm<'ctx>(ast: &Expr, context: &'ctx Context, builder: &'ctx Builder, module: &'ctx Module<'ctx>, var_table_cell: &'ctx RefCell<Vec<Var<'ctx>>> ) {
-        match ast {
-            Expr::Assign(e) => {
-                let left = e.left_expr.clone().name();
-                match e.left_expr.clone() {
-                    Expr::Int(i) => {
-                        let right = eval_int_formula(context, builder, module, var_table_cell, e.right_expr.clone());
-                        let ptr = declare_int( context, builder, module, var_table_cell, left.clone(), right.into_int_value());
-                        var_table_cell.borrow_mut().push(Var::new(left, ptr));
-                    },
-                    Expr::Char(c) => {
-                        let right = eval_char(&e.right_expr.clone(), context, builder, module, var_table_cell);
-                        let ptr = declare_int(context, builder, module, var_table_cell, left.clone(), right.into_int_value());
-                        var_table_cell.borrow_mut().push(Var::new(left, ptr));
-                    },
-                    Expr::Str(s) => {
-                        let string: &str = &s.eval();
-                        let ptr = emit_global_string(context, builder, module, var_table_cell, &string, &left);
-                        var_table_cell.borrow_mut().push(Var::new(left, ptr));
+    let mut ret_int_val: IntValue = context.i32_type().const_int(0, false);
+    let mut a:BasicValueEnum = BasicValueEnum::IntValue(ret_int_val);
+    struct Eval_Int_Formula<'s>{ f: &'s mut dyn FnMut(&mut Eval_Int_Formula, Expr) -> BasicValueEnum<'s> }
+    let mut eval_int_formula= Eval_Int_Formula {
+        f: &mut |eval_int_formula, expr| -> BasicValueEnum {
+            match expr {
+                Expr::Int(e) => {
+                    return BasicValueEnum::IntValue(context.i32_type().const_int(e.eval() as u64, false));
+                },
+                Expr::Ident(e) => {
+                    let ptr = match var_table.get(&e.name) {
+                        None => {
+                            println!("error: {} not found", e.name());
+                            std::process::exit(1);
+                        },
+                        Some(v) => v
+                    };
+                    return builder.build_load(*ptr, &e.name());
+                },
+                Expr::BinaryOp(e) => {
+                    let left = (eval_int_formula.f)(eval_int_formula, e.left_expr).into_int_value();
+                    let right = (eval_int_formula.f)(eval_int_formula, e.right_expr).into_int_value();
+                    match e.kind {
+                        Kind::Plus => {
+                            ret_int_val = builder.build_int_add(left, right, "");
+                        },
+                        Kind::Minus => {
+                            ret_int_val = builder.build_int_sub(left, right, "");
+                        },
+                        Kind::Multi => {
+                            ret_int_val = builder.build_int_mul(left, right, "");
+                        },
+                        Kind::Divi => {
+                            ret_int_val = builder.build_int_unsigned_div(left, right, "");
+                        }
+                        _ => {std::process::exit(1);}
                     }
-                    _ => {
-
-                    }
+                    return BasicValueEnum::IntValue(ret_int_val);
                 }
-                
-            },
-            Expr::Print(e) => {
-                let val = e.val.clone();
-                match val {
-                    Expr::Ident(_) => {
-
-                    }
-                    Expr::Int(_) | Expr::BinaryOp(_) => {
-                        let int_val = eval_int_formula(context, builder, module, &var_table_cell, val).into_int_value();
-                        let s = int_val.print_to_string().to_string();
-                        let vec:Vec<&str> = s.split_whitespace().collect();
-                        let s_to_print:&str = &(vec[1].to_string() + "\0");
-                        emit_printf_call(context, builder, module, var_table_cell, &s_to_print, "int");
-                    },
-                    Expr::Char(_) => {
-                        let char_val = eval_char(&val, context, builder, module, var_table_cell).into_int_value();
-                        let s = get_int_from_int_value(context, builder, module, var_table_cell,char_val);
-                        let fun = module.get_function("putchar");
-                        builder.build_call(fun.unwrap(), &[context.i32_type().const_int(s as u64, false).into()], "putchar");
-                        builder.build_call(fun.unwrap(), &[context.i32_type().const_int('\n' as u64, false).into()], "putchar");
-                    },
-                    Expr::Str(s) => {
-                        // emit_global_stringでstringを出力する
-                        let string:&str = &s.eval();
-                        emit_printf_call(context, builder, module, var_table_cell, &string, "");
-                    }
-                    _ => {
-                    
-                    }
+                _ => {
+                    return BasicValueEnum::IntValue(context.i32_type().const_int(0, false));
                 }
-            },
-            _ => {
-                
             }
         }
-    }
-    #[allow(unused_mut)]
-    fn eval_int_formula<'ctx>( context: &'ctx Context, builder: &'ctx Builder, module: &'ctx Module<'ctx>, var_table_cell: &'ctx RefCell<Vec<Var>>, expr: Expr) -> BasicValueEnum<'ctx> {
-        match expr {
-            Expr::Int(e) => {
-                return BasicValueEnum::IntValue(context.i32_type().const_int(e.eval() as u64, false));
-            },
-            Expr::Ident(e) => {
-                println!("called {}", e.name);
-                //let ptr = var_table_cell.get(&e.name()).unwrap();
-                let mut ptr ;
-                let mut var_table = var_table_cell.take();
-                for item in var_table {
-                    if item.name == e.name {
-                        ptr = item.ptr;
-                        return builder.build_load(ptr, &e.name());
-                    }
-                }
-                println!("error: {} not found", e.name());
-                std::process::exit(1);
-                
-            },
-            Expr::BinaryOp(e) => {
-                let left = eval_int_formula(context, builder, module, var_table_cell, e.left_expr).into_int_value();
-                let right = eval_int_formula(context, builder, module, var_table_cell, e.right_expr).into_int_value();
-                let mut ret_int_val: IntValue;
-                match e.kind {
-                    Kind::Plus => {
-                        ret_int_val = builder.build_int_add(left, right, "");
-                    },
-                    Kind::Minus => {
-                        ret_int_val = builder.build_int_sub(left, right, "");
-                    },
-                    Kind::Multi => {
-                        ret_int_val = builder.build_int_mul(left, right, "");
-                    },
-                    Kind::Divi => {
-                        ret_int_val = builder.build_int_unsigned_div(left, right, "");
-                    }
-                    _ => {std::process::exit(1);}
-                }
-                return BasicValueEnum::IntValue(ret_int_val);
-            }
-            _ => {
-                return BasicValueEnum::IntValue(context.i32_type().const_int(0, false));
-            }
-        }
-    }
-    fn eval_char<'ctx>(expr: &Expr, context: &'ctx Context, builder: &Builder, module: &Module, var_table_cell: &RefCell<Vec<Var>>) -> BasicValueEnum<'ctx> {
+    };
+
+
+
+    let mut eval_char = |expr:&Expr|{
         match expr {
             Expr::Char(c) => {
                 return BasicValueEnum::IntValue(context.i32_type().const_int(c.eval() as u64, false));
@@ -163,33 +85,17 @@ impl Var<'_> {
                 std::process::exit(1);
             }
         }
-    }
-    fn emit_printf_call<'ctx>(context: &'ctx Context, builder: &'ctx Builder, module: &'ctx Module<'ctx>, var_table_cell: &RefCell<Vec<Var>>, hello_str: &&str, name: &str) {
-        let pointer_value = emit_global_string(context, builder, module, var_table_cell, hello_str, name);
-        let func = module.get_function("puts");
-        builder.build_call(func.unwrap(), &[pointer_value.into()], "");
+    };
 
-    }
 
-    fn execute(context: &Context, builder: &Builder, module: &Module, var_table_cell: RefCell<Vec<Var>>) {
-        let ee = module.create_jit_execution_engine(OptimizationLevel::None).unwrap();
-        let maybe_fn = unsafe {
-            ee.get_function::<unsafe extern "C" fn() -> f64>("main")
-        };
+    let mut declare_int = |name: String, val: IntValue| -> PointerValue{
+        let i32_type = context.i32_type();
+        let int_ref: PointerValue = builder.build_alloca(i32_type, &name);
+        let _ = builder.build_store(int_ref, val);
+        int_ref
+    };
 
-        let compiled_fn = match maybe_fn {
-            Ok(f) => f,
-            Err(err) => {
-                panic!("{:?}", err);
-            }
-        };
-
-        unsafe {
-            compiled_fn.call();
-        }
-    }
-
-    fn emit_global_string<'ctx>(context: &'ctx Context, builder: &'ctx Builder, module: &'ctx Module<'ctx>, var_table_cell:& RefCell<Vec<Var>>, string: &&str, name: &str) -> PointerValue<'ctx> {
+    let mut emit_global_string = |string: &&str, name: &str|{
         let i8 = context.i8_type();
         let ty = i8.array_type(string.len() as u32);
         let gv = module.add_global(ty, Some(AddressSpace::Generic), name);
@@ -203,28 +109,87 @@ impl Var<'_> {
         );
 
         pointer_value
-    }
-    fn declare_int<'ctx>(context: &'ctx Context, builder: &'ctx Builder, module: &'ctx Module, var_table_cell: &RefCell<Vec<Var>>, name: String, val: IntValue) -> PointerValue<'ctx> {
-        let i32_type = context.i32_type();
-        let int_ref: PointerValue = builder.build_alloca(i32_type, &name);
-        let _ = builder.build_store(int_ref, val);
-        int_ref
-    }
+    };
+    let mut emit_printf_call = |string: &&str, name: &str|{
+        let pointer_value = emit_global_string( string, name);
+        let func = module.get_function("puts");
+        builder.build_call(func.unwrap(), &[pointer_value.into()], "");
 
-    fn declare_char(ast: &Expr, context: &Context, builder: &Builder, module: &Module, var_table_cell: &RefCell<Vec<Var>>, name:String, chr: IntValue) {
-        let i8_type = context.i8_type();
-        let char_ref: PointerValue = builder.build_alloca(i8_type, &name);
-        let _ = builder.build_store(char_ref, chr);
-    }
-
-    fn get_int_from_int_value(context: &Context, builder: &Builder, module: &Module, var_table_cell: &RefCell<Vec<Var>>, int_val: IntValue) -> i32{
+    };
+    let mut get_int_from_int_val = |int_val: IntValue| -> i32{
         let s = int_val.print_to_string().to_string();
         let vec:Vec<&str> = s.split_whitespace().collect();
         let val: i32 = vec[1].parse().unwrap();
         val
+    };
+    let mut ast_to_llvm = |ast: &Expr| {
+        match ast {
+        Expr::Assign(e) => {
+            let left = e.left_expr.clone().name();
+            match e.right_expr.clone() {
+                Expr::Int(i) => {
+                    let right = (eval_int_formula.f)(&mut eval_int_formula, e.right_expr.clone());
+                    let ptr = declare_int(left, right.into_int_value());
+                    //var_table_cell.borrow_mut().push(Var::new(left, ptr));
+                },
+                Expr::Char(c) => {
+                    let right = eval_char(&e.right_expr.clone());
+                    let ptr = declare_int(left, right.into_int_value());
+                    //var_table_cell.borrow_mut().push(Var::new(left, ptr));
+                },
+                Expr::Str(s) => {
+                    let string: &str = &s.eval();
+                    let ptr = emit_global_string(&string, &left);
+                    //var_table_cell.borrow_mut().push(Var::new(left, ptr));
+                }
+                _ => {
+
+                }
+            }
+            
+        },
+        Expr::Print(e) => {
+            let val = e.val.clone();
+            match val {
+                Expr::Ident(_) => {
+
+                }
+                Expr::Int(_) | Expr::BinaryOp(_) => {
+                    let int_val = (eval_int_formula.f)(&mut eval_int_formula, val).into_int_value();
+                    let s = int_val.print_to_string().to_string();
+                    let vec:Vec<&str> = s.split_whitespace().collect();
+                    let s_to_print:&str = &(vec[1].to_string() + "\0");
+                    emit_printf_call(&s_to_print, "int");
+                },
+                Expr::Char(_) => {
+                    let char_val = eval_char(&val);
+                    let s = get_int_from_int_val(char_val.into_int_value());
+                    let fun = module.get_function("putchar");
+                    builder.build_call(fun.unwrap(), &[context.i32_type().const_int(s as u64, false).into()], "putchar");
+                    builder.build_call(fun.unwrap(), &[context.i32_type().const_int('\n' as u64, false).into()], "putchar");
+                },
+                Expr::Str(s) => {
+                    // emit_global_stringでstringを出力する
+                    let string:&str = &s.eval();
+                    emit_printf_call(&string, "");
+                }
+                _ => {
+                
+                }
+            }
+        },
+        _ => {
+            
+        }
+    }};
+
+    for node in ast {
+        ast_to_llvm(node);
     }
+    builder.build_return(Some(&i32_type.const_int(0, false)));
 
-
+    let _result = module.print_to_file("main.ll");
+}
 
 fn type_of<T>(_: T) -> String{
     let a = std::any::type_name::<T>();
