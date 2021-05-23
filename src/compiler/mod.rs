@@ -154,7 +154,6 @@ pub fn generate(ast: &Vec<Expr>) {
     };
     */
     let ast_to_llvm = |ast: &Expr| {
-        
         match ast {
         Expr::Assign(e) => {
             let left = e.left_expr.clone().name();
@@ -218,11 +217,29 @@ pub fn generate(ast: &Vec<Expr>) {
             }
         },
         Expr::If(i) => {
-            let condition = i.clone().condition;
-            // builder.build_conditional_branch
             let list = i.clone().list;
-
-        }
+            let then_block = context.insert_basic_block_after(
+                basic_block,
+                "if",
+            );
+            for expr in list {
+                ast_to_llvm(expr);
+            }
+            let else_block = context.insert_basic_block_after(
+                then_block,
+                "else",
+            );
+            let condition = i.clone().condition;
+            let c_int = ast_to_llvm(condition).to_int_value();
+            builder.build_conditional_branch(
+                c_int,
+                then_block,
+                else_block
+            )
+        },
+        Expr::Equal(e) => {
+            (eval_int_formula.f)(&eval_int_formula, ast);
+        },
         _ => {
             
         }
