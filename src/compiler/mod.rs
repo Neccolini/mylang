@@ -299,7 +299,7 @@ pub fn generate(ast: &Vec<Expr>) {
             branches.borrow_mut().push(then_block);
             after_if.set(true);
         }
-        Expr::Equal(e) => {
+        Expr::Equal(_) => {
             let ast_ = expr.clone();
             (eval_int_formula.f)(&eval_int_formula, ast_);
         },
