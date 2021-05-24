@@ -1,3 +1,4 @@
+
 mod compiler;
 use compiler::*;
 use std::env;
@@ -36,4 +37,3 @@ fn main() {
     compiler::generate(&ast);
     
 }
-

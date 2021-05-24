@@ -7,7 +7,7 @@ use inkwell::module::{Linkage};
 use inkwell::values::{IntValue, PointerValue, BasicValueEnum};
 use std::{collections::HashMap};
 use std::cell::{RefCell, Cell};
-
+use inkwell::basic_block::BasicBlock;
 #[allow(unused_mut)]
 #[allow(non_camel_case_types)]
 #[allow(unused_assignments)]
@@ -28,6 +28,8 @@ pub fn generate(ast: &Vec<Expr>) {
     let basic_block = context.append_basic_block(function, "entry");
     builder.position_at_end(basic_block);
 
+    let mut ast_iter = 0;
+
     let get_int_from_int_val = |int_val: IntValue| -> i32{
         let s = int_val.print_to_string().to_string();
         let vec:Vec<&str> = s.split_whitespace().collect();
@@ -35,6 +37,8 @@ pub fn generate(ast: &Vec<Expr>) {
         val
     };
     let int_cell: Cell<BasicValueEnum> = Cell::new(BasicValueEnum::IntValue(context.i32_type().const_int(0, false)));
+    let branches: RefCell<Vec<BasicBlock>> = RefCell::new(Vec::new());
+    let after_if: Cell<bool> = Cell::new(false);
     struct Eval_Int_Formula<'s>{ f: &'s dyn Fn(&Eval_Int_Formula, Expr) }
     let eval_int_formula= Eval_Int_Formula {
         f: &|eval_int_formula, expr| {
@@ -153,8 +157,28 @@ pub fn generate(ast: &Vec<Expr>) {
         builder.build_call(func.unwrap(), &[ptr.into()], "");
     };
     */
-    let ast_to_llvm = |ast: &Expr| {
-        match ast {
+    struct Ast_To_Llvm<'s> {f: &'s dyn Fn(&Ast_To_Llvm<'s>, &Expr) }
+    let ast_to_llvm = Ast_To_Llvm {
+        f: &|ast_to_llvm: &Ast_To_Llvm, expr: &Expr| {
+        if after_if.get() {
+            match expr {
+                Expr::ElseIf(_) | Expr::Else(_) => {
+
+                }
+                _ => {
+                    let last = function.get_last_basic_block().unwrap();
+                    let vec = branches.borrow_mut().clone();
+                    for branch in vec.into_iter() {
+                        builder.position_at_end(branch);
+                        builder.build_unconditional_branch(last);
+                    }
+                    branches.borrow_mut().clear();
+                    builder.position_at_end(last);
+                    after_if.set(false);
+                }
+            }
+        }
+        match expr {
         Expr::Assign(e) => {
             let left = e.left_expr.clone().name();
             match e.right_expr.clone() {
@@ -217,37 +241,77 @@ pub fn generate(ast: &Vec<Expr>) {
             }
         },
         Expr::If(i) => {
-            let list = i.clone().list;
-            let then_block = context.insert_basic_block_after(
-                basic_block,
-                "if",
-            );
-            for expr in list {
-                ast_to_llvm(expr);
-            }
-            let else_block = context.insert_basic_block_after(
-                then_block,
-                "else",
-            );
+            after_if.set(false);
+            let then_block = context.append_basic_block(function, "");
+            let after_block = context.append_basic_block(function, "");
             let condition = i.clone().condition;
-            let c_int = ast_to_llvm(condition).to_int_value();
+            (ast_to_llvm.f)(&ast_to_llvm, &condition);
+            let c_int = int_cell.get().into_int_value();
             builder.build_conditional_branch(
                 c_int,
                 then_block,
-                else_block
-            )
+                after_block
+            );
+            let list = i.clone().list;
+            builder.position_at_end(then_block);
+            for ex in list {
+                (ast_to_llvm.f)(&ast_to_llvm, &ex);
+            }
+            builder.position_at_end(after_block);
+            branches.borrow_mut().push(then_block);
+            after_if.set(true);
         },
+        Expr::ElseIf(e) => {
+            after_if.set(false);
+            let then_block = context.append_basic_block(function, "");
+            let after_block = context.append_basic_block(function, "");
+            let condition = e.clone().condition;
+            (ast_to_llvm.f)(&ast_to_llvm, &condition);
+            let c_int = int_cell.get().into_int_value();
+            builder.build_conditional_branch(
+                c_int,
+                then_block,
+                after_block
+            );
+            let list = e.clone().list;
+            builder.position_at_end(then_block);
+            for ex in list {
+                (ast_to_llvm.f)(&ast_to_llvm, &ex);
+            }
+            builder.position_at_end(after_block);
+            branches.borrow_mut().push(then_block);
+            after_if.set(true);
+        },
+        Expr::Else(e) => {
+            after_if.set(false);
+            let then_block = context.append_basic_block(function, "");
+            let after_block = context.append_basic_block(function, "");
+            builder.build_unconditional_branch(
+                then_block,
+            );
+            let list = e.clone().list;
+            builder.position_at_end(then_block);
+            for ex in list {
+                (ast_to_llvm.f)(&ast_to_llvm, &ex);
+            }
+            builder.position_at_end(after_block);
+            branches.borrow_mut().push(then_block);
+            after_if.set(true);
+        }
         Expr::Equal(e) => {
-            (eval_int_formula.f)(&eval_int_formula, ast);
+            let ast_ = expr.clone();
+            (eval_int_formula.f)(&eval_int_formula, ast_);
         },
         _ => {
             
         }
-    }};
+    }}};
 
-    for node in ast {
-        ast_to_llvm(node);
+    while ast_iter < ast.len() {
+        (ast_to_llvm.f)(&ast_to_llvm, &ast[ast_iter]);
+        ast_iter += 1;
     }
+
     builder.build_return(Some(&i32_type.const_int(0, false)));
 
     let _result = module.print_to_file("main.ll");
@@ -309,6 +373,8 @@ pub enum Expr {
     Str(Str),
     Equal(Box<Equal>),
     If(Box<If>),
+    Else(Box<Else>),
+    ElseIf(Box<ElseIf>),
     Nope
 }
 impl Expr {
@@ -325,6 +391,8 @@ impl Expr {
             Expr::Str(e) => type_of(e),
             Expr::Equal(e) => type_of(e),
             Expr::If(e) => type_of(e),
+            Expr::Else(e) => type_of(e),
+            Expr::ElseIf(e) => type_of(e),
             Expr::Nope => "None".to_string()
             
         }
@@ -435,11 +503,33 @@ impl Equal {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct If {
     pub condition: Expr,
-    pub list: Vec<Expr>
+    pub list: Vec<Expr>,
 }
 impl If {
-    pub fn new(condition: Expr) -> If {
-        let list:Vec<Expr> = Vec::new();
+    pub fn new(condition: Expr, list: Vec<Expr>) -> If {
         If { condition, list }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Else {
+    pub list: Vec<Expr>,
+}
+impl Else {
+    pub fn new(list: Vec<Expr>) -> Else {
+        Else { list }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ElseIf {
+    pub condition: Expr,
+    pub list: Vec<Expr>,
+}
+impl ElseIf {
+    pub fn new(condition: Expr, list: Vec<Expr>) -> ElseIf {
+        ElseIf { condition, list }
+    }
+}
+
+
