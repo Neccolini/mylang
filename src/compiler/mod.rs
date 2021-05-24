@@ -123,7 +123,8 @@ pub fn generate(ast: &Vec<Expr>) {
         int_ref
     };
 
-    let emit_global_string = |string: &&str, name: &str|{
+    let emit_global_string = |string: String, name: &str|{
+        let string: String = string.clone() + &"\0".to_string();
         let i8 = context.i8_type();
         let ty = i8.array_type(string.len() as u32);
         let gv = module.add_global(ty, Some(AddressSpace::Generic), name);
@@ -138,14 +139,14 @@ pub fn generate(ast: &Vec<Expr>) {
 
         pointer_value
     };
-    let emit_printf_call = |string: &&str, name: &str|{
+    let emit_printf_call = |string: String, name: &str|{
         let pointer_value = emit_global_string( string, name);
         let func = module.get_function("puts");
         builder.build_call(func.unwrap(), &[pointer_value.into()], "");
 
     };
     let print_int = |ptr: PointerValue| {
-        let str_ptr = emit_global_string(&"%d\n\0", "");
+        let str_ptr = emit_global_string("%d".to_string(), "");
         let ptr2 = builder.build_load(ptr, "");
         let func = module.get_function("printf");
         builder.build_call(func.unwrap(), &[str_ptr.into(), ptr2.into()], "");
@@ -195,7 +196,7 @@ pub fn generate(ast: &Vec<Expr>) {
                 },
                 Expr::Str(s) => {
                     let string: &str = &s.eval();
-                    let ptr = emit_global_string(&string, &left);
+                    let ptr = emit_global_string(string.to_string(), &left);
                     var_table_cell.borrow_mut().insert(left, ptr);
                 },
                 _ => {
@@ -221,7 +222,7 @@ pub fn generate(ast: &Vec<Expr>) {
                     let s = int_val.print_to_string().to_string();
                     let vec:Vec<&str> = s.split_whitespace().collect();
                     let s_to_print:&str = &(vec[1].to_string() + "\0");
-                    emit_printf_call(&s_to_print, "int");
+                    emit_printf_call(s_to_print.to_string(), "int");
                 },
                 Expr::Char(_) => {
                     let char_val = eval_char(&val);
@@ -233,7 +234,7 @@ pub fn generate(ast: &Vec<Expr>) {
                 Expr::Str(s) => {
                     // emit_global_stringでstringを出力する
                     let string:&str = &s.eval();
-                    emit_printf_call(&string, "");
+                    emit_printf_call(string.to_string(), "");
                 }
                 _ => {
                 
