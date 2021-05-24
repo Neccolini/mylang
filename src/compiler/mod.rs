@@ -22,7 +22,6 @@ pub fn generate(ast: &Vec<Expr>) {
     let printf_type = i32_type.fn_type(&[str_type.into()], true);
     module.add_function("puts", printf_type, Some(Linkage::External));
     module.add_function("putchar", putchar_type, None);
-    module.add_function("printf", printf_type, Some(Linkage::External));
     let main_type = i32_type.fn_type(&[], false);
     let function = module.add_function("main", main_type, None);
     let basic_block = context.append_basic_block(function, "entry");
@@ -221,7 +220,7 @@ pub fn generate(ast: &Vec<Expr>) {
                     let int_val = int_cell.get().into_int_value();
                     let s = int_val.print_to_string().to_string();
                     let vec:Vec<&str> = s.split_whitespace().collect();
-                    let s_to_print:&str = &(vec[1].to_string() + "\0");
+                    let s_to_print:&str = &(vec[1].to_string());
                     emit_printf_call(s_to_print.to_string(), "int");
                 },
                 Expr::Char(_) => {
